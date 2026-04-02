@@ -570,8 +570,13 @@ def cam_worker():
     global latest_raw, is_running
     backoff = 1
     while is_running:
+        # Build exclusion set from cam2 so cam1 never grabs the same device
+        _cfg0 = load_cfg()
+        _c2i  = int(_cfg0.get('cam2_index', -1))
+        _skip = {_c2i, f'/dev/video{_c2i}'} if _c2i >= 0 else set()
         cam = None
         for idx in _CAM_INDICES:
+            if idx in _skip: continue
             try:
                 c = cv2.VideoCapture(idx, cv2.CAP_V4L2)
                 if c.isOpened(): cam = c; log.info("Camera: %s", idx); break
@@ -625,11 +630,10 @@ def cam2_worker():
             with raw2_lock: latest_raw2 = None
             _cam2_active = False
             time.sleep(5); continue
-        # Use 320x240 — 4× less USB bandwidth than 640x480, leaves room for cam1
-        cam.set(cv2.CAP_PROP_FRAME_WIDTH,  320)
-        cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
+        cam.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
+        cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         cam.set(cv2.CAP_PROP_BUFFERSIZE,   1)
-        cam.set(cv2.CAP_PROP_FPS,          15)
+        cam.set(cv2.CAP_PROP_FPS,          30)
         fails = 0; last_idx = idx; cfg_tick = 0
         fh = False; fv = False
         while is_running:
