@@ -625,14 +625,21 @@ def cam2_worker():
             with raw2_lock: latest_raw2 = None
             _cam2_active = False
             time.sleep(5); continue
-        cam.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
-        cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        # Use 320x240 — 4× less USB bandwidth than 640x480, leaves room for cam1
+        cam.set(cv2.CAP_PROP_FRAME_WIDTH,  320)
+        cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 240)
         cam.set(cv2.CAP_PROP_BUFFERSIZE,   1)
-        cam.set(cv2.CAP_PROP_FPS,          30)
-        fails = 0; last_idx = idx
+        cam.set(cv2.CAP_PROP_FPS,          15)
+        fails = 0; last_idx = idx; cfg_tick = 0
+        fh = False; fv = False
         while is_running:
-            _cc = load_cfg()
-            if int(_cc.get('cam2_index', -1)) != last_idx: break
+            # Re-read config only every 30 frames instead of every frame
+            if cfg_tick % 30 == 0:
+                _cc = load_cfg()
+                if int(_cc.get('cam2_index', -1)) != last_idx: break
+                fh = _cc.get('cam2_flip_h', False)
+                fv = _cc.get('cam2_flip_v', False)
+            cfg_tick += 1
             if check_thermal() == 3: time.sleep(1); continue
             ret, frame = cam.read()
             if not ret:
@@ -640,8 +647,6 @@ def cam2_worker():
                 if fails > 30: log.warning("Camera2: too many failures, reconnecting"); break
                 time.sleep(0.03); continue
             fails = 0
-            fh = _cc.get('cam2_flip_h', False)
-            fv = _cc.get('cam2_flip_v', False)
             if fh and fv:  frame = cv2.flip(frame, -1)
             elif fh:       frame = cv2.flip(frame,  1)
             elif fv:       frame = cv2.flip(frame,  0)
