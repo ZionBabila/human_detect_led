@@ -55,7 +55,7 @@ body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;height:1
 /* CONTROLS */
 .ctrl-bar{background:#161b22;border-top:1px solid #30363d;padding:10px 12px;flex-shrink:0}
 .cg{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:6px}
-.cg2{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px}
+.cg2{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px}
 .ci label{display:block;font-size:9px;font-weight:700;color:#8b949e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:3px}
 .ci input[type=range]{width:100%;accent-color:#238636;height:4px;cursor:pointer}
 .ci .v{font-size:10px;color:#3fb950;font-weight:700;font-family:monospace}
@@ -253,12 +253,7 @@ body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;height:1
             <button id="mode-prop"    onclick="setSpreadMode('proportional')">Auto</button>
           </div>
         </div>
-        <!-- Colors -->
-        <div class="ci">
-          <label>Active Color</label>
-          <input type="color" id="active_color" value="#ff6b6b"
-            oninput="S('active_color',this.value);refreshLEDColors()">
-        </div>
+        <!-- Idle color only — active color is set per strip -->
         <div class="ci">
           <label>Idle Color</label>
           <input type="color" id="idle_color" value="#1a1a2e"
@@ -268,10 +263,7 @@ body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;height:1
 
       <div class="btn-row">
         <button class="btn bg2" onclick="testAll()">Test All</button>
-        <button class="btn bb2" onclick="testRand()">Random</button>
-        <button class="btn bd"  onclick="chaseAnim()">Chase</button>
         <button class="btn bd"  onclick="resetCfg()">Reset</button>
-        <button class="btn bd"  onclick="saveCfg()">Save JSON</button>
       </div>
     </div>
   </div>
@@ -288,12 +280,9 @@ body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;height:1
     </div>
 
     <div class="panel">
-      <div class="pt">LED Count</div>
-      <div class="led-cnt-big" id="lc-big">50</div>
-      <label style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.8px">1 – 300 LEDs</label>
-      <input type="range" id="led_count" min="1" max="300" value="50"
-        style="width:100%;accent-color:#1f6feb;margin-top:4px"
-        oninput="S('led_count',+this.value);buildStrip(+this.value);document.getElementById('lc-big').textContent=this.value;syncAlvMax(+this.value)">
+      <div class="pt">Total LEDs</div>
+      <div class="led-cnt-big" id="lc-big">0</div>
+      <div style="font-size:10px;color:#6e7681;text-align:center">across all strips — set per strip below</div>
     </div>
 
     <div class="panel">
@@ -685,13 +674,23 @@ function renderStrips(strips) {
       </div></div>`;
   });
 }
+function syncTotalLEDs(strips) {
+  const total = (strips || []).reduce((s, t) => s + (t.enabled !== false ? (t.led_count || 0) : 0), 0);
+  const el = document.getElementById('lc-big');
+  if (el) el.textContent = total;
+  buildStrip(total);
+  syncAlvMax(total);
+  // keep global led_count in sync for backend visualisation
+  S('led_count', total);
+}
 function toggleStrip(i) {
   const c = load_cfg_local(); c.strips[i].enabled = !c.strips[i].enabled;
-  save_cfg_local(c); S('strips', c.strips); renderStrips(c.strips);
+  save_cfg_local(c); S('strips', c.strips); renderStrips(c.strips); syncTotalLEDs(c.strips);
 }
 function updateStrip(i, key, val) {
   const c = load_cfg_local(); c.strips[i][key] = val;
   save_cfg_local(c); S('strips', c.strips);
+  if (key === 'led_count') syncTotalLEDs(c.strips);
 }
 function addStrip() {
   const c = load_cfg_local();
@@ -700,7 +699,7 @@ function addStrip() {
   const pin = pins.find(p => !used.includes(p)) || 18;
   c.strips = c.strips || [];
   c.strips.push({gpio_pin:pin, led_count:50, enabled:false, label:'Strip '+(c.strips.length+1), color:'#58a6ff'});
-  save_cfg_local(c); S('strips', c.strips); renderStrips(c.strips);
+  save_cfg_local(c); S('strips', c.strips); renderStrips(c.strips); syncTotalLEDs(c.strips);
 }
 function load_cfg_local() { return JSON.parse(JSON.stringify(_cfgCache)); }
 function save_cfg_local(c) { _cfgCache = JSON.parse(JSON.stringify(c)); }
@@ -731,7 +730,7 @@ function loadCfg() {
     Object.assign(cfg, d);
     _cfgCache = JSON.parse(JSON.stringify(d));
     ['brightness','smoothing','confidence_threshold','detection_threshold',
-     'led_count','active_color','idle_color','active_leds_count'].forEach(k => {
+     'idle_color','active_leds_count'].forEach(k => {
       const el = document.getElementById(k); if (el) el.value = d[k];
     });
     V('bv',  d.brightness, '');
@@ -739,11 +738,9 @@ function loadCfg() {
     V('cv',  d.confidence_threshold, '');
     V('dtv', d.detection_threshold, '%');
     V('alv', d.active_leds_count || 15, ' LEDs');
-    const alvEl = document.getElementById('active_leds_count');
-    if (alvEl) alvEl.max = d.led_count || 50;
     if (d.led_spread_mode) setSpreadMode(d.led_spread_mode);
-    buildStrip(d.led_count || 50);
     renderStrips(d.strips || []);
+    syncTotalLEDs(d.strips || []);
   });
 }
 
