@@ -311,6 +311,14 @@ body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;height:1
         </div>
         <div style="font-size:9px;color:#6e7681;margin-top:4px">-1 = off &nbsp;·&nbsp; 0,1,2… = device index</div>
       </div>
+      <div style="margin-top:8px">
+        <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Position</div>
+        <div class="mode-toggle" style="height:26px">
+          <button id="cam2-side-left"  onclick="setCam2Side('left')">◀ Left</button>
+          <button id="cam2-side-right" onclick="setCam2Side('right')" class="active">Right ▶</button>
+        </div>
+        <div style="font-size:9px;color:#6e7681;margin-top:3px">Side of Camera 1 in wide view</div>
+      </div>
       <div style="display:flex;gap:6px;margin-top:6px">
         <button class="btn bd" id="cam2-fh-btn" style="flex:1;font-size:9px;padding:4px" onclick="toggleCam2Flip('cam2_flip_h')">Flip H</button>
         <button class="btn bd" id="cam2-fv-btn" style="flex:1;font-size:9px;padding:4px" onclick="toggleCam2Flip('cam2_flip_v')">Flip V</button>
@@ -691,6 +699,12 @@ function scanCameras() {
     res.textContent = 'Found: ' + d.cameras.map(i => 'index ' + i).join(', ');
   }).catch(() => { btn.disabled = false; btn.textContent = 'Scan'; });
 }
+function setCam2Side(side) {
+  cfg.cam2_side = side;
+  S('cam2_side', side);
+  document.getElementById('cam2-side-left').className  = side === 'left'  ? 'active' : '';
+  document.getElementById('cam2-side-right').className = side === 'right' ? 'active' : '';
+}
 function toggleCam2Flip(key) {
   const cur  = cfg[key] || false;
   const next = !cur;
@@ -710,6 +724,11 @@ function _applyCam2UI() {
   const fv = document.getElementById('cam2-fv-btn');
   if (fh) fh.className = 'btn ' + (cfg.cam2_flip_h ? 'bb2' : 'bd');
   if (fv) fv.className = 'btn ' + (cfg.cam2_flip_v ? 'bb2' : 'bd');
+  const side = cfg.cam2_side || 'right';
+  const sl = document.getElementById('cam2-side-left');
+  const sr = document.getElementById('cam2-side-right');
+  if (sl) sl.className = side === 'left'  ? 'active' : '';
+  if (sr) sr.className = side === 'right' ? 'active' : '';
 }
 
 function toggleFlip(key) {

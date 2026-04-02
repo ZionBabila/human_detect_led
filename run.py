@@ -37,7 +37,7 @@ DEFAULT = {
     'active_color': '#ff6b6b', 'idle_color': '#1a1a2e',
     'confidence_threshold': 0.3, 'gpio_pin': 18, 'remote_btn_pin': 17,
     'flip_h': True, 'flip_v': False,
-    'cam2_index': -1, 'cam2_flip_h': False, 'cam2_flip_v': False,
+    'cam2_index': -1, 'cam2_flip_h': False, 'cam2_flip_v': False, 'cam2_side': 'right',
     'strips': [{'gpio_pin': 18, 'led_count': 50, 'enabled': True,
                 'label': 'Strip 1', 'color': '#ff6b6b'}]
 }
@@ -76,6 +76,11 @@ def _validate_cfg(updates: dict):
     for k in ('flip_h', 'flip_v', 'cam2_flip_h', 'cam2_flip_v'):
         if k in updates:
             clean[k] = bool(updates[k])
+
+    if 'cam2_side' in updates:
+        v = str(updates['cam2_side'])
+        if v in ('left', 'right'): clean['cam2_side'] = v
+        else: errors.append("cam2_side must be 'left' or 'right'")
 
     if 'cam2_index' in updates:
         try:
@@ -657,7 +662,10 @@ def detect_worker():
                 h1, h2 = frame.shape[0], frame2.shape[0]
                 if h1 != h2:
                     frame2 = cv2.resize(frame2, (int(frame2.shape[1] * h1 / h2), h1))
-                frame = np.hstack([frame, frame2])
+                if cfg.get('cam2_side', 'right') == 'left':
+                    frame = np.hstack([frame2, frame])
+                else:
+                    frame = np.hstack([frame, frame2])
             run_detection(frame.copy(), cfg)
             if get_remote():
                 out = frame.copy()
