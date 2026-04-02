@@ -6,10 +6,11 @@ from collections import deque
 from flask import (Flask, render_template, jsonify, request, Response,
                    session, redirect)
 
-APP_VERSION = '2.0.0'
+APP_VERSION = '2.1.0'
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(BASE_DIR, 'config.json')
 SETUP_FILE  = os.path.join(BASE_DIR, '.setup_complete')
+PASSWD_FILE = os.path.join(BASE_DIR, '.password_hash')
 _START_TIME = time.time()
 
 # ── logging setup ─────────────────────────────────────────────────────────────
@@ -589,10 +590,40 @@ def detect_worker():
         except Exception as e:
             log.error("Detection error: %s", e)
 
+# ── password helpers ──────────────────────────────────────────────────────────
+import hashlib as _hashlib
+
+def _hash_password(pw: str) -> str:
+    salt = os.urandom(32)
+    key  = _hashlib.pbkdf2_hmac('sha256', pw.encode(), salt, 260_000)
+    return salt.hex() + ':' + key.hex()
+
+def _check_password(pw: str, stored: str) -> bool:
+    try:
+        salt_hex, key_hex = stored.split(':')
+        salt = bytes.fromhex(salt_hex)
+        key  = _hashlib.pbkdf2_hmac('sha256', pw.encode(), salt, 260_000)
+        return key.hex() == key_hex
+    except Exception:
+        return False
+
+def _passwd_set() -> bool:
+    """True if a password has been configured (file or env var)."""
+    return bool(os.environ.get('LED_PASSWORD')) or os.path.exists(PASSWD_FILE)
+
+def _check_login(pw: str) -> bool:
+    env_pw = os.environ.get('LED_PASSWORD', '')
+    if env_pw:
+        return pw == env_pw
+    if os.path.exists(PASSWD_FILE):
+        try:
+            return _check_password(pw, open(PASSWD_FILE).read().strip())
+        except Exception:
+            return False
+    return False
+
 # ── Flask + auth ──────────────────────────────────────────────────────────────
-_AUTH_PASSWORD = os.environ.get('LED_PASSWORD', '')
-_AUTH_ENABLED  = bool(_AUTH_PASSWORD)
-_SECRET_KEY    = os.environ.get('LED_SECRET_KEY', secrets.token_hex(32))
+_SECRET_KEY = os.environ.get('LED_SECRET_KEY', secrets.token_hex(32))
 
 app = Flask(__name__,
             template_folder=os.path.join(BASE_DIR, 'templates'),
@@ -600,7 +631,7 @@ app = Flask(__name__,
 app.secret_key = _SECRET_KEY
 
 def _is_authed():
-    return not _AUTH_ENABLED or session.get('authenticated')
+    return session.get('authenticated', False)
 
 def require_login(f):
     @functools.wraps(f)
@@ -614,11 +645,12 @@ def require_login(f):
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    if not _AUTH_ENABLED:
-        return redirect('/')
+    # If setup not done yet, go there first
+    if not _setup_complete():
+        return redirect('/setup')
     err = ''
     if request.method == 'POST':
-        if request.form.get('password', '') == _AUTH_PASSWORD:
+        if _check_login(request.form.get('password', '')):
             session['authenticated'] = True
             return redirect('/')
         err = 'Incorrect password'
@@ -631,16 +663,31 @@ def logout():
 
 # ── setup wizard ──────────────────────────────────────────────────────────────
 def _setup_complete():
-    return os.path.exists(SETUP_FILE)
+    """Setup is complete only when both the flag file and a password exist."""
+    return os.path.exists(SETUP_FILE) and _passwd_set()
 
 @app.route('/setup', methods=['GET', 'POST'])
-@require_login
 def setup_wizard():
+    # After setup is done, require login to revisit setup
+    if _setup_complete() and not _is_authed():
+        return redirect('/login')
     if request.method == 'POST':
         d = request.get_json() or {}
+        # Step 0: set password
+        if d.get('action') == 'set_password':
+            pw = d.get('password', '')
+            if len(pw) < 8:
+                return jsonify({'status': 'error',
+                                'errors': ['Password must be at least 8 characters']}), 400
+            with open(PASSWD_FILE, 'w') as f:
+                f.write(_hash_password(pw))
+            session['authenticated'] = True  # auto-login after setting password
+            return jsonify({'status': 'ok'})
+        # Final step: mark setup complete
         if d.get('complete'):
             open(SETUP_FILE, 'w').close()
             return jsonify({'status': 'ok'})
+        # Config updates (strips, detection settings)
         cfg = load_cfg()
         updates, errors = _validate_cfg(d)
         if errors:
@@ -799,8 +846,10 @@ if __name__ == '__main__':
         threading.Thread(target=target, daemon=True).start()
 
     log.info("Human Detect LED v%s starting", APP_VERSION)
-    if _AUTH_ENABLED:
-        log.info("Auth enabled — password set via LED_PASSWORD env var")
+    if os.environ.get('LED_PASSWORD'):
+        log.info("Auth: password from LED_PASSWORD env var")
+    elif os.path.exists(PASSWD_FILE):
+        log.info("Auth: password from %s", PASSWD_FILE)
     if not _setup_complete():
         log.info("First run — open http://%s:5000/setup to configure", _get_ip())
     else:
