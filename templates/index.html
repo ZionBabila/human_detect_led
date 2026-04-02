@@ -296,34 +296,48 @@ body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;height:1
 
     <div class="panel">
       <div class="pt">Camera 2 — Wide View</div>
-      <div class="sr">
+
+      <!-- Status row -->
+      <div class="sr" style="margin-bottom:8px">
         <span class="sl">Status</span>
-        <span class="sv" id="cam2-status">off</span>
+        <span class="sv sof" id="cam2-status">off</span>
       </div>
-      <div style="margin:8px 0 4px">
+
+      <!-- Add / Remove -->
+      <div id="cam2-add-row" style="display:block">
         <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Device Index</div>
-        <div style="display:flex;gap:6px;align-items:center">
-          <input type="number" id="cam2-index" min="-1" max="9" value="-1"
-            style="width:60px;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:4px;padding:4px 6px;font-size:12px"
-            placeholder="-1">
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+          <input type="number" id="cam2-index-input" min="0" max="9" value="1"
+            style="width:52px;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:4px;padding:4px 6px;font-size:12px">
           <button class="btn bd" style="font-size:9px;padding:4px 8px" onclick="scanCameras()">Scan</button>
-          <button class="btn bb2" style="font-size:9px;padding:4px 8px" onclick="applyCam2()">Apply</button>
         </div>
-        <div style="font-size:9px;color:#6e7681;margin-top:4px">-1 = off &nbsp;·&nbsp; 0,1,2… = device index</div>
+        <div id="cam2-scan-result" style="font-size:9px;color:#3fb950;margin-bottom:6px;display:none"></div>
+        <button class="btn bb2" style="width:100%;font-size:10px;padding:5px" onclick="addCam2()">+ Add Camera 2</button>
       </div>
-      <div style="margin-top:8px">
-        <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Position</div>
-        <div class="mode-toggle" style="height:26px">
-          <button id="cam2-side-left"  onclick="setCam2Side('left')">◀ Left</button>
-          <button id="cam2-side-right" onclick="setCam2Side('right')" class="active">Right ▶</button>
+
+      <!-- Settings (shown when cam2 active) -->
+      <div id="cam2-settings-row" style="display:none">
+        <div style="margin-bottom:8px">
+          <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Position</div>
+          <div class="mode-toggle" style="height:26px">
+            <button id="cam2-side-left"  onclick="setCam2Side('left')">◀ Left</button>
+            <button id="cam2-side-right" onclick="setCam2Side('right')" class="active">Right ▶</button>
+          </div>
         </div>
-        <div style="font-size:9px;color:#6e7681;margin-top:3px">Side of Camera 1 in wide view</div>
+        <div style="margin-bottom:8px">
+          <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Aspect Ratio</div>
+          <div class="mode-toggle" style="height:26px">
+            <button id="cam2-asp-fit"    onclick="setCam2Aspect('fit')" class="active">Fit</button>
+            <button id="cam2-asp-native" onclick="setCam2Aspect('native')">Native</button>
+          </div>
+          <div style="font-size:9px;color:#6e7681;margin-top:3px">Native = no distortion, Fit = fills frame</div>
+        </div>
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <button class="btn bd" id="cam2-fh-btn" style="flex:1;font-size:9px;padding:4px" onclick="toggleCam2Flip('cam2_flip_h')">Flip H</button>
+          <button class="btn bd" id="cam2-fv-btn" style="flex:1;font-size:9px;padding:4px" onclick="toggleCam2Flip('cam2_flip_v')">Flip V</button>
+        </div>
+        <button class="btn bd" style="width:100%;font-size:10px;padding:5px;color:#f85149;border-color:#da3633" onclick="removeCam2()">✕ Remove Camera 2</button>
       </div>
-      <div style="display:flex;gap:6px;margin-top:6px">
-        <button class="btn bd" id="cam2-fh-btn" style="flex:1;font-size:9px;padding:4px" onclick="toggleCam2Flip('cam2_flip_h')">Flip H</button>
-        <button class="btn bd" id="cam2-fv-btn" style="flex:1;font-size:9px;padding:4px" onclick="toggleCam2Flip('cam2_flip_v')">Flip V</button>
-      </div>
-      <div id="cam2-scan-result" style="font-size:9px;color:#3fb950;margin-top:6px;display:none"></div>
     </div>
 
     <div class="panel">
@@ -588,9 +602,18 @@ function pollStatus() {
     const c2st = document.getElementById('cam2-status');
     if (c2st) {
       const idx = cfg.cam2_index !== undefined ? cfg.cam2_index : -1;
-      if (idx < 0) { c2st.textContent = 'off'; c2st.className = 'sv sof'; }
-      else if (d.cam2_active) { c2st.textContent = 'active (index ' + idx + ')'; c2st.className = 'sv son'; }
-      else { c2st.textContent = 'connecting…'; c2st.className = 'sv'; }
+      const addRow      = document.getElementById('cam2-add-row');
+      const settingsRow = document.getElementById('cam2-settings-row');
+      if (idx < 0) {
+        c2st.textContent = 'off'; c2st.className = 'sv sof';
+        if (addRow)      addRow.style.display      = 'block';
+        if (settingsRow) settingsRow.style.display = 'none';
+      } else {
+        if (addRow)      addRow.style.display      = 'none';
+        if (settingsRow) settingsRow.style.display = 'block';
+        if (d.cam2_active) { c2st.textContent = 'active (index ' + idx + ')'; c2st.className = 'sv son'; }
+        else               { c2st.textContent = 'connecting…';                c2st.className = 'sv'; }
+      }
     }
   }).catch(() => {});
 }
@@ -685,15 +708,30 @@ function resetCfg() {
     .then(() => location.reload());
 }
 // ── Camera 2 ──────────────────────────────────────────────────────────────────
-function applyCam2() {
-  const idx = parseInt(document.getElementById('cam2-index').value);
-  if (isNaN(idx) || idx < -1 || idx > 9) { alert('Enter -1 to disable or 0-9 for device index'); return; }
+function addCam2() {
+  const inp = document.getElementById('cam2-index-input');
+  const idx = parseInt(inp ? inp.value : 1);
+  if (isNaN(idx) || idx < 0 || idx > 9) { alert('Enter a camera index 0-9'); return; }
   cfg.cam2_index = idx;
   S('cam2_index', idx);
-  const btn = document.querySelector('[onclick="applyCam2()"]');
-  if (btn) { btn.textContent = '✓'; setTimeout(() => btn.textContent = 'Apply', 1500); }
   const st = document.getElementById('cam2-status');
-  if (st) { st.textContent = idx < 0 ? 'off' : 'connecting…'; st.className = 'sv ' + (idx < 0 ? 'sof' : ''); }
+  if (st) { st.textContent = 'connecting…'; st.className = 'sv'; }
+  document.getElementById('cam2-add-row').style.display = 'none';
+  document.getElementById('cam2-settings-row').style.display = 'block';
+}
+function removeCam2() {
+  cfg.cam2_index = -1;
+  S('cam2_index', -1);
+  const st = document.getElementById('cam2-status');
+  if (st) { st.textContent = 'off'; st.className = 'sv sof'; }
+  document.getElementById('cam2-add-row').style.display = 'block';
+  document.getElementById('cam2-settings-row').style.display = 'none';
+}
+function setCam2Aspect(aspect) {
+  cfg.cam2_aspect = aspect;
+  S('cam2_aspect', aspect);
+  document.getElementById('cam2-asp-fit').className    = aspect === 'fit'    ? 'active' : '';
+  document.getElementById('cam2-asp-native').className = aspect === 'native' ? 'active' : '';
 }
 function scanCameras() {
   const btn = event.target; btn.disabled = true; btn.textContent = '…';
@@ -725,8 +763,10 @@ function toggleCam2Flip(key) {
 }
 function _applyCam2UI() {
   const idx = cfg.cam2_index !== undefined ? cfg.cam2_index : -1;
-  const el = document.getElementById('cam2-index');
-  if (el) el.value = idx;
+  const addRow      = document.getElementById('cam2-add-row');
+  const settingsRow = document.getElementById('cam2-settings-row');
+  if (addRow)      addRow.style.display      = idx < 0 ? 'block' : 'none';
+  if (settingsRow) settingsRow.style.display = idx < 0 ? 'none'  : 'block';
   const st = document.getElementById('cam2-status');
   if (st) { st.textContent = idx < 0 ? 'off' : 'active (index ' + idx + ')'; st.className = 'sv ' + (idx < 0 ? 'sof' : 'son'); }
   const fh = document.getElementById('cam2-fh-btn');
@@ -738,6 +778,11 @@ function _applyCam2UI() {
   const sr = document.getElementById('cam2-side-right');
   if (sl) sl.className = side === 'left'  ? 'active' : '';
   if (sr) sr.className = side === 'right' ? 'active' : '';
+  const aspect = cfg.cam2_aspect || 'fit';
+  const af = document.getElementById('cam2-asp-fit');
+  const an = document.getElementById('cam2-asp-native');
+  if (af) af.className = aspect === 'fit'    ? 'active' : '';
+  if (an) an.className = aspect === 'native' ? 'active' : '';
 }
 
 function toggleFlip(key) {
