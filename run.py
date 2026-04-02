@@ -174,6 +174,11 @@ FADE_IN  = 0.25
 FADE_OUT = 0.06
 TICK_LED = 0.025
 
+# ── test-LED override (set by /api/test-led) ──────────────────────────────────
+_test_led_idx   = None   # int = light only this index; None = normal operation
+_test_led_until = 0.0
+_test_led_lock  = threading.Lock()
+
 def _init_one_strip(gpio_pin: int, led_count: int, brightness: int):
     if not LED_AVAILABLE:
         return None
@@ -239,7 +244,12 @@ def led_worker():
                 n = int(scfg['led_count'])
                 strip_col = scfg.get('color') or col_h
                 sar, sag, sab = hex_to_rgb(strip_col)
-                if cx is None or acnt <= 0:
+                with _test_led_lock:
+                    ti    = _test_led_idx
+                    t_end = _test_led_until
+                if ti is not None and time.time() < t_end:
+                    active = {ti} if ti < n else set()
+                elif cx is None or acnt <= 0:
                     active = set()
                 elif mode == 'proportional':
                     active = set(_leds_for(cx, n, max(1, round(person_w * n))))
@@ -782,7 +792,23 @@ def toggle_stream_route():
 @app.route('/api/test-led', methods=['POST'])
 @require_login
 def test_led_route():
-    cfg  = load_cfg()
+    global _test_led_idx, _test_led_until
+    cfg    = load_cfg()
+    data   = request.get_json() or {}
+    target = data.get('target', 'all')
+
+    if target in ('first', 'last'):
+        with _strip_lock:
+            cfgs = list(_strip_cfgs)
+        n   = int(cfgs[0]['led_count']) if cfgs else int(cfg.get('led_count', 50))
+        idx = 0 if target == 'first' else n - 1
+        with _test_led_lock:
+            _test_led_idx   = idx
+            _test_led_until = time.time() + 2.0
+        log.info("Test LED: %s → index %d of %d", target, idx, n)
+        return jsonify({'status': 'ok', 'led_available': LED_AVAILABLE, 'led_index': idx})
+
+    # target == 'all': flash all strips
     col  = cfg.get('active_color', '#ff6b6b')
     idle = cfg.get('idle_color', '#1a1a2e')
     bri  = int(cfg.get('brightness', 200))

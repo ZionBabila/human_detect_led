@@ -149,25 +149,15 @@ body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;height:1
 </div>
 
 <div class="header">
-  <div class="hl"><div class="dot"></div><h1>Human Detect Lit LED — Calibration</h1></div>
-  
-  <!-- Shutdown modal -->
-  
-    </div>
-  </div>
-  <!-- Shutdown done screen -->
-  
-    <div id="svc-stopped-banner" style="display:none;font-size:1.1rem">Service stopped</div>
-    <div id="svc-stopped-cmd" style="display:none;font-size:.75rem;color:#555;margin-top:4px">sudo systemctl start human-led.service</div>
-  </div>
-<div class="badges">
+  <div class="hl"><div class="dot"></div><h1>Human Detect LED</h1></div>
+  <div class="badges">
     <span class="badge bg">LIVE</span>
     <span class="badge bb" id="fps-b">-- FPS</span>
     <span class="badge br" id="det-b">NO DETECT</span>
     <span class="badge by" id="eng-b">HOG</span>
-    <button class="stream-btn" id="stream-btn" onclick="toggleStream()" title="Toggle network streaming to other devices">📡 STREAM ON</button>
-    <button class="run-btn" id="run-btn" onclick="toggleRunMode()" title="Switch to run mode — hides camera and controls">RUN MODE</button>
-    <button class="shutdown-btn" onclick="openShutdown()" title="Stop service">&#x23FB;&nbsp;Stop</button>
+    <button class="stream-btn" id="stream-btn" onclick="toggleStream()" title="Stream camera to other devices">STREAM</button>
+    <button class="run-btn" id="run-btn" onclick="toggleRunMode()" title="Switch to run mode">RUN MODE</button>
+    <button class="shutdown-btn" onclick="openShutdown()" title="Stop service">&#x23FB; Stop</button>
   </div>
 </div>
 
@@ -305,9 +295,10 @@ body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;height:1
     <div class="panel">
       <div class="pt">System</div>
       <div class="sr"><span class="sl">Camera</span><span class="sv" id="s-cam">—</span></div>
-      <div class="sr"><span class="sl">Flask</span><span class="sv son">online</span></div>
-      <div class="sr"><span class="sl">Network Stream</span><span class="sv" id="s-stream">—</span></div>
-      <div class="sr"><span class="sl">Mode</span><span class="sv">Calibration</span></div>
+      <div class="sr"><span class="sl">Server</span><span class="sv son">online</span></div>
+      <div class="sr"><span class="sl">Stream</span><span class="sv" id="s-stream">—</span></div>
+      <div id="svc-stopped-banner" style="display:none;margin-top:6px;font-size:10px;color:#f85149;font-weight:700">Camera offline</div>
+      <div id="svc-stopped-cmd" style="display:none;font-size:9px;color:#6e7681;margin-top:2px">sudo systemctl start human-led.service</div>
     </div>
   </div>
 </div>
@@ -714,19 +705,20 @@ function save_cfg_local(c) { _cfgCache = JSON.parse(JSON.stringify(c)); }
 //  QUICK TEST GRID
 // ─────────────────────────────────────────────────────────────────────────────
 function testEndLED(end) {
-  const total = cfg.led_count || 50;
-  const idx   = end === 'first' ? 0 : total - 1;
-  const color = cfg.active_color || '#ff6b6b';
   const btnId = end === 'first' ? 'test-first-btn' : 'test-last-btn';
   const btn   = document.getElementById(btnId);
   if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
   fetch('/api/test-led', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({led_index: idx, color})});
-  renderLEDs(new Set([idx]), total, true);
-  setTimeout(() => {
-    renderLEDs(new Set(), total, false);
-    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
-  }, 1500);
+    body: JSON.stringify({target: end})})
+  .then(r => r.json()).then(d => {
+    const total = cfg.led_count || 50;
+    const idx   = d.led_index !== undefined ? d.led_index : (end === 'first' ? 0 : total - 1);
+    renderLEDs(new Set([idx]), total, true);
+    setTimeout(() => {
+      renderLEDs(new Set(), total, false);
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+    }, 2200);
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
