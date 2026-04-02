@@ -385,6 +385,7 @@ is_running  = True
 current_frame = None
 latest_raw    = None
 latest_raw2   = None   # second camera; None = not active
+_cam2_active  = False  # True when cam2_worker is capturing frames
 
 detection_state = {
     "detected": False, "bbox": None, "active_leds": [],
@@ -605,12 +606,13 @@ def cam_worker():
 
 # ── second camera thread ──────────────────────────────────────────────────────
 def cam2_worker():
-    global latest_raw2, is_running
+    global latest_raw2, is_running, _cam2_active
     while is_running:
         _c2 = load_cfg()
         idx = int(_c2.get('cam2_index', -1))
         if idx < 0:
             with raw2_lock: latest_raw2 = None
+            _cam2_active = False
             time.sleep(2); continue
         cam = None
         try:
@@ -621,6 +623,7 @@ def cam2_worker():
         if cam is None:
             log.warning("Camera2: index %d not found, retrying in 5s", idx)
             with raw2_lock: latest_raw2 = None
+            _cam2_active = False
             time.sleep(5); continue
         cam.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
         cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -643,8 +646,10 @@ def cam2_worker():
             elif fh:       frame = cv2.flip(frame,  1)
             elif fv:       frame = cv2.flip(frame,  0)
             with raw2_lock: latest_raw2 = frame
+            _cam2_active = True
         cam.release()
         with raw2_lock: latest_raw2 = None
+        _cam2_active = False
         if is_running: time.sleep(2)
 
 # ── detect thread ─────────────────────────────────────────────────────────────
@@ -667,14 +672,13 @@ def detect_worker():
                 else:
                     frame = np.hstack([frame, frame2])
             run_detection(frame.copy(), cfg)
-            if get_remote():
-                out = frame.copy()
-                with det_lock: st = detection_state.copy()
-                if st['detected'] and st['bbox']:
-                    x1,y1,x2,y2 = st['bbox']
-                    pulse = int(abs(np.sin(time.time()*3))*40)
-                    cv2.rectangle(out,(x1,y1),(x2,y2),(0,200+pulse,50+pulse),2)
-                with frame_lock: current_frame = out
+            out = frame.copy()
+            with det_lock: st = detection_state.copy()
+            if st['detected'] and st['bbox']:
+                x1,y1,x2,y2 = st['bbox']
+                pulse = int(abs(np.sin(time.time()*3))*40)
+                cv2.rectangle(out,(x1,y1),(x2,y2),(0,200+pulse,50+pulse),2)
+            with frame_lock: current_frame = out
         except Exception as e:
             log.error("Detection error: %s", e)
 
@@ -845,6 +849,7 @@ def get_status():
         'version':        APP_VERSION,
         'uptime_s':       uptime,
         'camera_active':  current_frame is not None,
+        'cam2_active':    _cam2_active,
         'use_yolo':       USE_YOLO,
         'led_available':  LED_AVAILABLE,
         'strips':         strips_status,

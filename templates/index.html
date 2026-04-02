@@ -585,6 +585,13 @@ function pollStatus() {
     el.textContent = d.camera_active ? 'active' : 'offline';
     el.className   = 'sv ' + (d.camera_active ? 'son' : 'sof');
     if (typeof d.stream_enabled !== 'undefined') { streamEnabled = d.stream_enabled; refreshStreamUI(); }
+    const c2st = document.getElementById('cam2-status');
+    if (c2st) {
+      const idx = cfg.cam2_index !== undefined ? cfg.cam2_index : -1;
+      if (idx < 0) { c2st.textContent = 'off'; c2st.className = 'sv sof'; }
+      else if (d.cam2_active) { c2st.textContent = 'active (index ' + idx + ')'; c2st.className = 'sv son'; }
+      else { c2st.textContent = 'connecting…'; c2st.className = 'sv'; }
+    }
   }).catch(() => {});
 }
 
@@ -683,8 +690,10 @@ function applyCam2() {
   if (isNaN(idx) || idx < -1 || idx > 9) { alert('Enter -1 to disable or 0-9 for device index'); return; }
   cfg.cam2_index = idx;
   S('cam2_index', idx);
+  const btn = document.querySelector('[onclick="applyCam2()"]');
+  if (btn) { btn.textContent = '✓'; setTimeout(() => btn.textContent = 'Apply', 1500); }
   const st = document.getElementById('cam2-status');
-  if (st) { st.textContent = idx < 0 ? 'off' : 'active (index ' + idx + ')'; st.className = 'sv ' + (idx < 0 ? 'sof' : 'son'); }
+  if (st) { st.textContent = idx < 0 ? 'off' : 'connecting…'; st.className = 'sv ' + (idx < 0 ? 'sof' : ''); }
 }
 function scanCameras() {
   const btn = event.target; btn.disabled = true; btn.textContent = '…';
