@@ -1,0 +1,166 @@
+Human Detect LED — QA Report
+Generated: 2026-03-31 11:22:28
+Host: localhost:5000
+App: run.py
+========================================================
+
+────────────────────────────────────────────────────────
+  1 · Connectivity
+────────────────────────────────────────────────────────
+  PASS  Flask port 5000 reachable
+    App: run.py
+
+────────────────────────────────────────────────────────
+  2 · Core API Correctness
+────────────────────────────────────────────────────────
+  PASS  GET /api/detection → 200
+  PASS    field 'detected' present  (False)
+  PASS    field 'confidence' present  (0.0)
+  PASS    field 'fps' present  (15.5)
+  PASS    field 'active_leds' present  ([])
+  PASS    field 'cx' present  (0.6537)
+  PASS    field 'person_w' present  (0.0982)
+  PASS    field 'use_yolo' present  (False)
+  PASS    field 'hold' present  (0)
+  PASS  FPS healthy  (15.5 fps)
+  PASS  cx in valid range [0,1]  (0.6537)
+  PASS  person_w in valid range [0,1]  (0.0982)
+  PASS  GET /api/config → 200
+  PASS    config key 'brightness'  (200)
+  PASS    config key 'smoothing'  (0.3)
+  PASS    config key 'led_count'  (32)
+  PASS    config key 'active_leds_count'  (15)
+  PASS    config key 'active_color'  (#5c0f61)
+  PASS    config key 'idle_color'  (#000000)
+  PASS    config key 'confidence_threshold'  (0.3)
+  PASS    config key 'led_spread_mode'  (proportional)
+  PASS    config key 'strips'  ([{'color': '#092a13', 'enabled)
+  PASS  GET /api/status → 200
+  PASS  Camera reported active
+  PASS  GET /api/thermal → 200
+  PASS  Temperature readable  (38.0°C)
+  PASS  Temperature safe  (< 70°C)
+  PASS  No CPU throttling
+
+────────────────────────────────────────────────────────
+  3 · Config Validation
+────────────────────────────────────────────────────────
+  PASS  POST brightness=180 accepted and echoed back
+  PASS  Config restored to original value
+  PASS  Unknown config key silently ignored
+  PASS  Unknown key not persisted
+  PASS  Color '#00ff88' stored correctly
+  PASS  LED count boundary accepted  (min=1)
+  PASS  LED count boundary accepted  (max=300)
+
+────────────────────────────────────────────────────────
+  4 · Remote Mode  (/api/remote, /api/toggle-stream)
+────────────────────────────────────────────────────────
+    Remote currently: False
+  PASS  POST /api/remote {enabled:true} → 200
+  PASS  Remote state confirmed ON in response
+  PASS  Video feed streams when remote=ON
+  PASS  POST /api/remote {enabled:false} → remote OFF confirmed
+  PASS  Video feed returns 204 when remote=OFF (no encoding)
+  PASS  /api/toggle-stream toggles remote state
+
+────────────────────────────────────────────────────────
+  5 · LED Test Endpoint  (/api/test-led)
+────────────────────────────────────────────────────────
+  PASS  POST /api/test-led → 200
+  PASS  led_available field present  (True)
+
+────────────────────────────────────────────────────────
+  6 · API Response Latency  (50 sequential calls)
+────────────────────────────────────────────────────────
+    avg=4.4ms  p50=3.5ms  p95=9.6ms  p99=12.0ms  max=12.0ms  errors=0
+  PASS  Average latency excellent  (4.4ms < 30ms)
+  PASS  p95 latency good  (9.6ms < 100ms)
+  PASS  Zero errors in 50 sequential calls
+
+────────────────────────────────────────────────────────
+  7 · Concurrent Requests Stress  (20 threads × 5 calls)
+────────────────────────────────────────────────────────
+    100/100 succeeded  avg=60.4ms  max=88.0ms  errors=0
+  PASS  No errors under 20-thread concurrency
+  PASS  Avg latency under concurrency acceptable  (60.4ms)
+
+────────────────────────────────────────────────────────
+  8 · Rapid Config Write Stress  (30 POSTs in quick succession)
+────────────────────────────────────────────────────────
+  PASS  30 rapid config POSTs — all accepted
+  PASS  Config readable after spam test
+  PASS  config.json is valid JSON after spam test
+
+────────────────────────────────────────────────────────
+  9 · Detection State Consistency  (20 polls × 200ms)
+────────────────────────────────────────────────────────
+  PASS  All 20 detection polls returned valid types
+  PASS  cx always in [0,1] across 20 polls
+  PASS  FPS stable across 20 polls  (avg=15.3)
+
+────────────────────────────────────────────────────────
+  10 · Memory & CPU Under Load
+────────────────────────────────────────────────────────
+    Process PID: 277312  |  RSS before: 184.8 MB
+    RSS after 100 requests: 184.8 MB  (growth: +0.0 MB)
+  PASS  Memory growth acceptable under load  (+0.0 MB)
+    Measuring CPU usage over 2 seconds...
+    CPU usage (idle): 52.5%
+  WARN  CPU usage moderate  (52.5%)
+
+────────────────────────────────────────────────────────
+  11 · System Health  (Pi-local)
+────────────────────────────────────────────────────────
+  PASS  human-led.service is active
+  PASS  Disk free space OK  (20.5 GB free)
+  PASS  CPU clock healthy  (1800 MHz)
+    RAM: 2942 MB free / 3847 MB total (24% used)
+  PASS  RAM usage healthy  (24%)
+
+────────────────────────────────────────────────────────
+  12 · File Integrity
+────────────────────────────────────────────────────────
+  PASS  run.py  (23265 B — production runner)
+  PASS  calibration_app.py  (27022 B — setup / calibration)
+  PASS  desktop_app.py  (12239 B — desktop GUI)
+  PASS  config.json  (567 B — configuration)
+  PASS  templates/index.html  (45023 B — web UI template)
+  PASS  static/manifest.json  (185 B — PWA manifest)
+  PASS  qa_test.py  (9811 B — original QA)
+  PASS  run.py — valid Python syntax
+  PASS  calibration_app.py — valid Python syntax
+  PASS  desktop_app.py — valid Python syntax
+  PASS  config.json valid JSON
+  PASS    config key 'brightness'  (200)
+  PASS    config key 'led_count'  (32)
+  PASS    config key 'active_color'  (#5c0f61)
+  PASS    config key 'idle_color'  (#000000)
+  PASS    config key 'strips'  ([{'color': '#092a13', 'enabled)
+  PASS    run.py: remote mode toggle
+  PASS    run.py: LED flash signal
+  PASS    run.py: GPIO button init
+  PASS    run.py: clean color conversion
+  PASS    run.py: LED fade
+  PASS    run.py: proportional spread mode
+  PASS    calibration_app.py: thermal throttle
+  PASS    calibration_app.py: fixed double-smooth
+  PASS    calibration_app.py: rounded LED centre
+  PASS    desktop_app.py: desktop app class
+  PASS    desktop_app.py: remote toggle button
+  PASS    templates/index.html: run mode toggle JS
+  PASS    templates/index.html: run mode apply JS
+
+────────────────────────────────────────────────────────
+  SUMMARY
+────────────────────────────────────────────────────────
+
+SUMMARY
+PASS 89  FAIL 0  WARN 1  TOTAL 90
+
+────────────────────────────────────────────────────────
+  CONCLUSIONS & RECOMMENDATIONS
+────────────────────────────────────────────────────────
+
+CONCLUSIONS
+No failures, 1 warning(s). System functional.

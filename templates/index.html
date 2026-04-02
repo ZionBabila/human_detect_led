@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='40' fill='%23ff6b35'/><circle cx='50' cy='50' r='22' fill='%23fff'/></svg>">
+  <meta name="theme-color" content="#1a1a2e">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LED Controller</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+.header{background:#161b22;padding:8px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #30363d;flex-shrink:0}
+.hl{display:flex;align-items:center;gap:10px}
+.dot{width:8px;height:8px;border-radius:50%;background:#238636;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(35,134,54,.5)}70%{box-shadow:0 0 0 6px rgba(35,134,54,0)}}
+.header h1{font-size:14px;font-weight:600}
+.badges{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.badge{padding:2px 9px;border-radius:20px;font-size:10px;font-weight:700;font-family:monospace}
+.bg{background:#1f6feb22;color:#3fb950;border:1px solid #238636}
+.bb{background:#1f6feb22;color:#58a6ff;border:1px solid #1f6feb}
+.br{background:#da363322;color:#f85149;border:1px solid #da3633}
+.by{background:#9e6a0322;color:#d29922;border:1px solid #9e6a03}
+.stream-btn{padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;font-family:monospace;cursor:pointer;border:1px solid #238636;background:#1f6feb22;color:#3fb950;transition:all .2s}
+.stream-btn.off{border-color:#da3633;color:#f85149;background:#da363322}
+
+.layout{display:grid;grid-template-columns:1fr 270px;flex:1;overflow:hidden;min-height:0}
+.main{display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.cam-area{position:relative;background:#000;flex:1;overflow:hidden;display:flex;align-items:center;justify-content:center;min-height:0}
+#feed{max-width:100%;max-height:100%;object-fit:contain}
+.hud-tl{position:absolute;top:8px;left:8px;display:flex;flex-direction:column;gap:4px}
+.hud-tr{position:absolute;top:8px;right:8px}
+.pill{background:rgba(13,17,23,.88);border:1px solid #30363d;padding:3px 10px;border-radius:14px;font-size:11px;font-weight:600;font-family:monospace}
+.pill-g{border-color:#238636;color:#3fb950}
+.pill-r{border-color:#da3633;color:#f85149}
+.pill-b{border-color:#1f6feb;color:#58a6ff}
+
+/* LED STRIP */
+.led-row{background:#161b22;border-top:1px solid #30363d;padding:8px 12px;flex-shrink:0}
+.led-row-hdr{font-size:10px;font-weight:700;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center}
+.led-strip{display:flex;gap:2px;height:22px}
+.led{flex:1;height:100%;border-radius:2px;background:#21262d;border:1px solid #30363d;transition:background .04s,box-shadow .04s,opacity .04s;min-width:3px}
+.led.on{box-shadow:0 0 5px currentColor}
+
+/* POSITION BAR */
+.pos-bar-wrap{background:#0d1117;border-top:1px solid #30363d;padding:6px 12px 8px;flex-shrink:0}
+.pos-bar-hdr{font-size:10px;font-weight:700;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center}
+.pos-bar-track{position:relative;height:16px;background:#21262d;border-radius:8px;overflow:hidden;border:1px solid #30363d}
+.pos-bar-fill{position:absolute;top:0;height:100%;border-radius:8px;transition:left .05s,width .05s;background:linear-gradient(90deg,#ff6b6b,#ffa07a)}
+.pos-bar-glow{position:absolute;top:0;height:100%;border-radius:8px;filter:blur(8px);opacity:0.5;transition:left .05s,width .05s;background:linear-gradient(90deg,#ff6b6b,#ffa07a)}
+.pos-bar-home{position:absolute;top:0;width:3px;height:100%;background:#30363d;border-radius:2px;transition:left .05s}
+.rev-btn{font-size:9px;font-weight:700;padding:2px 7px;border:1px solid #30363d;border-radius:4px;cursor:pointer;background:#21262d;color:#8b949e;transition:all .15s}
+.rev-btn.active{border-color:#1f6feb;color:#58a6ff;background:#1f6feb22}
+
+/* CONTROLS */
+.ctrl-bar{background:#161b22;border-top:1px solid #30363d;padding:10px 12px;flex-shrink:0}
+.cg{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:6px}
+.cg2{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:8px}
+.ci label{display:block;font-size:9px;font-weight:700;color:#8b949e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:3px}
+.ci input[type=range]{width:100%;accent-color:#238636;height:4px;cursor:pointer}
+.ci .v{font-size:10px;color:#3fb950;font-weight:700;font-family:monospace}
+.ci input[type=color]{width:100%;height:26px;border:1px solid #30363d;border-radius:3px;cursor:pointer;background:none;padding:1px}
+/* highlight active-leds slider in yellow */
+#active_leds_count{accent-color:#d29922}
+.v-y{color:#d29922 !important}
+.ci.dimmed{opacity:.35;pointer-events:none}
+.btn-row{display:flex;gap:5px;flex-wrap:wrap}
+.btn{padding:5px 11px;border:1px solid #30363d;border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.4px;transition:all .12s;font-family:inherit}
+.bg2{background:#238636;color:#fff;border-color:#238636}.bg2:hover{background:#2ea043}
+.bb2{background:#1f6feb;color:#fff;border-color:#1f6feb}.bb2:hover{background:#388bfd}
+.bd{background:#21262d;color:#c9d1d9}.bd:hover{background:#30363d}
+/* mode toggle: Fixed / Proportional */
+.mode-toggle{display:flex;border:1px solid #30363d;border-radius:5px;overflow:hidden;height:26px}
+.mode-toggle button{flex:1;border:none;background:#21262d;color:#6e7681;font-size:9px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.5px;transition:all .15s;padding:0 6px}
+.mode-toggle button.active{background:#9e6a03;color:#fff}
+
+/* SIDEBAR */
+.sidebar{background:#161b22;border-left:1px solid #30363d;overflow-y:auto;display:flex;flex-direction:column}
+.panel{padding:11px 12px;border-bottom:1px solid #30363d}
+.pt{font-size:10px;font-weight:700;color:#8b949e;text-transform:uppercase;letter-spacing:1px;margin-bottom:9px}
+.sr{display:flex;justify-content:space-between;margin-bottom:5px;font-size:11px;align-items:center}
+.sl{color:#6e7681}.sv{color:#e6edf3;font-family:monospace;font-weight:700}
+.son{color:#3fb950}.sof{color:#f85149}
+.led-cnt-big{font-size:30px;font-weight:700;color:#58a6ff;font-family:monospace;text-align:center;margin:4px 0 6px}
+.strip-card{background:#21262d;border:1px solid #30363d;border-radius:6px;padding:8px;margin-bottom:6px}
+.strip-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.strip-label{font-size:11px;font-weight:700;color:#e6edf3}
+.toggle{width:30px;height:16px;background:#30363d;border-radius:8px;cursor:pointer;position:relative;transition:background .2s;border:none}
+.toggle.on{background:#238636}
+.toggle::after{content:'';position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:left .2s}
+.toggle.on::after{left:16px}
+.strip-fields{display:grid;grid-template-columns:1fr 1fr;gap:4px}
+.sf label{font-size:9px;color:#8b949e;text-transform:uppercase;display:block;margin-bottom:2px}
+.sf input,.sf select{width:100%;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:3px;padding:3px 5px;font-size:11px}
+.add-strip{width:100%;padding:6px;background:none;border:1px dashed #30363d;border-radius:4px;color:#6e7681;font-size:10px;cursor:pointer;text-transform:uppercase;letter-spacing:.5px;transition:all .15s}
+.add-strip:hover{border-color:#1f6feb;color:#58a6ff}
+.ql-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:3px}
+.ql{padding:3px;border:1px solid #30363d;border-radius:3px;font-size:9px;font-weight:600;cursor:pointer;background:#21262d;color:#6e7681;text-align:center;transition:all .12s}
+.ql:hover{border-color:#1f6feb;color:#58a6ff}
+.ql.fl{background:#1f6feb;color:#fff;border-color:#1f6feb}
+.eng{display:inline-block;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;font-family:monospace}
+.ey{background:#1f6feb22;color:#58a6ff;border:1px solid #1f6feb}
+.eh{background:#9e6a0322;color:#d29922;border:1px solid #9e6a03}
+
+/* SLEEP OVERLAY */
+#sleep-overlay{position:fixed;inset:0;background:#000;z-index:9999;display:none;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;user-select:none}
+#sleep-overlay .sleep-time{color:#1e2a1e;font-size:52px;font-weight:700;font-family:monospace;animation:breath 3s ease-in-out infinite}
+#sleep-overlay .sleep-txt{color:#1a2a1a;font-size:14px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-top:10px;animation:breath 3s ease-in-out infinite}
+@keyframes breath{0%,100%{opacity:.12}50%{opacity:.35}}
+
+/* SHUTDOWN BUTTON */
+
+.shutdown-btn:hover{background:#3a0d0d;border-color:#f85149;color:#f85149;box-shadow:0 0 8px #f8514944}
+
+
+.shutdown-box{background:#161b22;border:1px solid #f85149;border-radius:10px;padding:28px 32px;text-align:center;color:#e6edf3;font-family:monospace;min-width:280px}
+.shutdown-box h2{color:#f85149;font-size:1.1rem;margin:0 0 8px}
+.shutdown-box p{font-size:.8rem;color:#8b949e;margin:0 0 20px}
+.shutdown-actions{display:flex;gap:10px;justify-content:center}
+.shutdown-actions button{padding:7px 20px;border-radius:6px;border:none;font-size:.85rem;font-weight:700;cursor:pointer;font-family:monospace}
+.sd-confirm{background:#f85149;color:#fff}.sd-confirm:hover{background:#da3633}
+.sd-cancel{background:#21262d;color:#e6edf3;border:1px solid #30363d}.sd-cancel:hover{background:#30363d}
+.shutdown-done{display:none;position:fixed;inset:0;background:#0d1117;z-index:9999;align-items:center;justify-content:center;flex-direction:column;gap:16px;color:#f85149;font-family:monospace}
+.shutdown-done.open{display:flex}
+.shutdown-btn{background:transparent;border:1px solid #3a1a1a;color:#8b3030;border-radius:20px;padding:3px 10px;font-size:10px;font-weight:700;font-family:monospace;cursor:pointer;transition:all .15s;line-height:1.4;white-space:nowrap;flex-shrink:0}
+.shutdown-btn:hover{background:#3a0d0d;border-color:#f85149;color:#f85149;box-shadow:0 0 8px #f8514944}
+.shutdown-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:9999;align-items:center;justify-content:center}
+.shutdown-modal.open{display:flex}.shutdown-modal-box{background:#161b22;border:1px solid #f85149;border-radius:10px;padding:28px 32px;text-align:center;max-width:320px}
+.shutdown-modal-box h2{color:#f85149;font-size:15px;margin-bottom:10px}.shutdown-modal-box p{color:#8b949e;font-size:12px;margin-bottom:20px}
+.smd-row{display:flex;gap:10px;justify-content:center}.smd-cancel{background:transparent;border:1px solid #30363d;color:#8b949e;border-radius:6px;padding:6px 18px;font-size:12px;cursor:pointer;font-family:inherit}
+.smd-cancel:hover{border-color:#58a6ff;color:#58a6ff}.smd-confirm{background:#da3633;border:none;color:#fff;border-radius:6px;padding:6px 18px;font-size:12px;cursor:pointer;font-weight:700;font-family:inherit}
+.smd-confirm:hover{background:#f85149}
+
+/* RUN MODE */
+.run-btn{padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;font-family:monospace;cursor:pointer;border:1px solid #30363d;background:#21262d;color:#8b949e;transition:all .2s}
+.run-btn.active{border-color:#d29922;color:#d29922;background:#9e6a0322}
+.run-mode .cam-area{display:none!important}
+.run-mode .ctrl-bar{display:none!important}
+.run-mode .sidebar{display:none!important}
+.run-mode .layout{grid-template-columns:1fr!important}
+.run-mode .led-strip{height:32px}
+.run-mode .led{height:32px}
+.run-mode .led-row{padding:12px 16px}
+.run-mode .pos-bar-wrap{padding:10px 16px 14px}
+.run-mode .pos-bar-track{height:22px}</style>
+</head>
+<body>
+
+<!-- SLEEP OVERLAY -->
+<div id="sleep-overlay" onclick="wakeUp()">
+  <div class="sleep-time" id="sleep-clock">--:--</div>
+  <div class="sleep-txt">לחץ להמשיך · Click to wake</div>
+</div>
+
+<div class="header">
+  <div class="hl"><div class="dot"></div><h1>Human Detect Lit LED — Calibration</h1></div>
+  
+  <!-- Shutdown modal -->
+  
+    </div>
+  </div>
+  <!-- Shutdown done screen -->
+  
+    <div id="svc-stopped-banner" style="display:none;font-size:1.1rem">Service stopped</div>
+    <div id="svc-stopped-cmd" style="display:none;font-size:.75rem;color:#555;margin-top:4px">sudo systemctl start human-led.service</div>
+  </div>
+<div class="badges">
+    <span class="badge bg">LIVE</span>
+    <span class="badge bb" id="fps-b">-- FPS</span>
+    <span class="badge br" id="det-b">NO DETECT</span>
+    <span class="badge by" id="eng-b">HOG</span>
+    <button class="stream-btn" id="stream-btn" onclick="toggleStream()" title="Toggle network streaming to other devices">📡 STREAM ON</button>
+    <button class="run-btn" id="run-btn" onclick="toggleRunMode()" title="Switch to run mode — hides camera and controls">RUN MODE</button>
+    <button class="shutdown-btn" onclick="openShutdown()" title="Stop service">&#x23FB;&nbsp;Stop</button>
+  </div>
+</div>
+
+<div class="layout">
+  <div class="main">
+    <div class="cam-area">
+      <img id="videoFeed" id="feed" src="/video_feed" alt="feed"><div id="streamPlaceholder" style="display:none;position:absolute;inset:0;background:#111;align-items:center;justify-content:center;flex-direction:column;color:#555;font-size:1.1rem;gap:10px"><div style="font-size:2.5rem">OFF</div><div>Camera stream paused</div><div style="font-size:0.8rem;color:#444">Detection + LEDs still active</div></div>
+      <div class="hud-tl">
+        <div class="pill" id="det-pill" style="color:#6e7681">Waiting...</div>
+        <div class="pill" id="conf-pill" style="color:#6e7681">Conf: --</div>
+      </div>
+      <div class="hud-tr"><div class="pill pill-b" id="fps-pill">0 FPS</div></div>
+    </div>
+
+    <!-- LED STRIP (animated) -->
+    <div class="led-row">
+      <div class="led-row-hdr">
+        <span>LED Strip — <b id="la">0</b> / <b id="lt">50</b> lit  <span id="led-mode-lbl" style="color:#d29922;font-size:9px;margin-left:6px"></span></span>
+        <span id="lr" style="color:#8b949e;font-size:10px"></span>
+      </div>
+      <div class="led-strip" id="leds"></div>
+    </div>
+
+    <!-- POSITION BAR with home marker -->
+    <div class="pos-bar-wrap">
+      <div class="pos-bar-hdr">
+        <span>Position Bar — <span id="pb-dir">Right → Left</span></span>
+        <button class="rev-btn active" id="rev-btn" onclick="toggleReverse()">⇄ Reverse</button>
+      </div>
+      <div class="pos-bar-track" id="pos-track">
+        <div class="pos-bar-home" id="pos-home" style="left:0%"></div>
+        <div class="pos-bar-glow" id="pos-glow" style="left:0%;width:0%"></div>
+        <div class="pos-bar-fill" id="pos-fill" style="left:0%;width:0%"></div>
+      </div>
+    </div>
+
+    <!-- CONTROLS -->
+    <div class="ctrl-bar">
+      <div class="cg">
+        <div class="ci">
+          <label>Brightness</label>
+          <input type="range" id="brightness" min="0" max="255" value="200"
+            oninput="S('brightness',+this.value);V('bv',this.value,'')">
+          <span class="v" id="bv">200</span>
+        </div>
+        <div class="ci">
+          <label>Smoothing</label>
+          <input type="range" id="smoothing" min="0" max="0.98" step="0.02" value="0.3"
+            oninput="S('smoothing',+this.value);V('sv2',this.value,'')">
+          <span class="v" id="sv2">0.30</span>
+        </div>
+        <div class="ci">
+          <label>Confidence</label>
+          <input type="range" id="confidence_threshold" min="0.05" max="1" step="0.05" value="0.3"
+            oninput="S('confidence_threshold',+this.value);V('cv',this.value,'')">
+          <span class="v" id="cv">0.30</span>
+        </div>
+        <div class="ci">
+          <label>Detection Thresh</label>
+          <input type="range" id="detection_threshold" min="5" max="100" value="30"
+            oninput="S('detection_threshold',+this.value);V('dtv',this.value,'%')">
+          <span class="v" id="dtv">30%</span>
+        </div>
+      </div>
+
+      <div class="cg2">
+        <!-- Active LED count (fixed mode) -->
+        <div class="ci" id="alc-wrap">
+          <label>Active LEDs <span style="color:#d29922">★</span></label>
+          <input type="range" id="active_leds_count" min="1" max="100" value="15"
+            oninput="S('active_leds_count',+this.value);V('alv',this.value,' LEDs')">
+          <span class="v v-y" id="alv">15 LEDs</span>
+        </div>
+        <!-- Spread mode toggle -->
+        <div class="ci" style="display:flex;flex-direction:column;justify-content:flex-end">
+          <label>Spread Mode</label>
+          <div class="mode-toggle">
+            <button id="mode-fixed"   class="active" onclick="setSpreadMode('fixed')">Fixed</button>
+            <button id="mode-prop"    onclick="setSpreadMode('proportional')">Auto</button>
+          </div>
+        </div>
+        <!-- Colors -->
+        <div class="ci">
+          <label>Active Color</label>
+          <input type="color" id="active_color" value="#ff6b6b"
+            oninput="S('active_color',this.value);refreshLEDColors()">
+        </div>
+        <div class="ci">
+          <label>Idle Color</label>
+          <input type="color" id="idle_color" value="#1a1a2e"
+            oninput="S('idle_color',this.value);refreshLEDColors()">
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn bg2" onclick="testAll()">Test All</button>
+        <button class="btn bb2" onclick="testRand()">Random</button>
+        <button class="btn bd"  onclick="chaseAnim()">Chase</button>
+        <button class="btn bd"  onclick="resetCfg()">Reset</button>
+        <button class="btn bd"  onclick="saveCfg()">Save JSON</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="panel">
+      <div class="pt">Detection</div>
+      <div class="sr"><span class="sl">Person</span><span class="sv" id="s-det">—</span></div>
+      <div class="sr"><span class="sl">Confidence</span><span class="sv" id="s-conf">—</span></div>
+      <div class="sr"><span class="sl">FPS</span><span class="sv" id="s-fps">—</span></div>
+      <div class="sr"><span class="sl">Active LEDs</span><span class="sv" id="s-leds">0</span></div>
+      <div class="sr"><span class="sl">Engine</span><span id="s-eng" class="eng eh">HOG</span></div>
+    </div>
+
+    <div class="panel">
+      <div class="pt">LED Count</div>
+      <div class="led-cnt-big" id="lc-big">50</div>
+      <label style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.8px">1 – 300 LEDs</label>
+      <input type="range" id="led_count" min="1" max="300" value="50"
+        style="width:100%;accent-color:#1f6feb;margin-top:4px"
+        oninput="S('led_count',+this.value);buildStrip(+this.value);document.getElementById('lc-big').textContent=this.value;syncAlvMax(+this.value)">
+    </div>
+
+    <div class="panel">
+      <div class="pt">Strips & GPIO</div>
+      <div id="strips-container"></div>
+      <button class="add-strip" onclick="addStrip()">+ Add Strip</button>
+    </div>
+
+    <div class="panel">
+      <div class="pt">Quick Test</div>
+      <div class="ql-grid" id="qg"></div>
+    </div>
+
+    <div class="panel">
+      <div class="pt">System</div>
+      <div class="sr"><span class="sl">Camera</span><span class="sv" id="s-cam">—</span></div>
+      <div class="sr"><span class="sl">Flask</span><span class="sv son">online</span></div>
+      <div class="sr"><span class="sl">Network Stream</span><span class="sv" id="s-stream">—</span></div>
+      <div class="sr"><span class="sl">Mode</span><span class="sv">Calibration</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+//  CONFIG STATE
+// ─────────────────────────────────────────────────────────────────────────────
+const cfg = {};
+let _cfgCache = {};
+let chaseTimer = null;
+let streamEnabled = true;
+let spreadMode = 'fixed';   // 'fixed' | 'proportional'
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  SLEEP / INACTIVITY SCREEN (5 minutes)
+// ─────────────────────────────────────────────────────────────────────────────
+const SLEEP_MS = 5 * 60 * 1000;
+let sleepTimer = null;
+
+function startSleepTimer() {
+  clearTimeout(sleepTimer);
+  sleepTimer = setTimeout(goToSleep, SLEEP_MS);
+}
+function goToSleep() {
+  document.getElementById('sleep-overlay').style.display = 'flex';
+  tickSleepClock();
+}
+function wakeUp() {
+  document.getElementById('sleep-overlay').style.display = 'none';
+  startSleepTimer();
+}
+function tickSleepClock() {
+  if (document.getElementById('sleep-overlay').style.display === 'none') return;
+  const now = new Date();
+  document.getElementById('sleep-clock').textContent =
+    now.toLocaleTimeString('he-IL', {hour:'2-digit', minute:'2-digit'});
+  setTimeout(tickSleepClock, 10000);
+}
+['mousemove','mousedown','touchstart','keydown','click'].forEach(e =>
+  document.addEventListener(e, startSleepTimer, {passive:true}));
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  LED ANIMATION ENGINE  (runs at 60 fps, independent of poll)
+// ─────────────────────────────────────────────────────────────────────────────
+let animCenter  = 0;      // current visual centre (float, LED units)
+let animTarget  = 0;      // where we want to move toward
+let animDetected = false; // is detection currently active?
+let animPersonW = 0;      // person width ratio (for proportional mode)
+const HOME = 0;           // home position = leftmost LED index
+
+// lerp speed: lower = smoother/slower travel
+const LERP_TO_TARGET = 0.14;
+const LERP_TO_HOME   = 0.09;
+
+function animLoop() {
+  const ledCount   = cfg.led_count  || 50;
+  const activeCount = parseInt(cfg.active_leds_count) || 15;
+
+  const dest = animDetected ? animTarget : HOME;
+  const speed = animDetected ? LERP_TO_TARGET : LERP_TO_HOME;
+  animCenter += (dest - animCenter) * speed;
+
+  // ── compute visual spread ──────────────────────────────────────────────
+  let half;
+  if (spreadMode === 'proportional' && animDetected) {
+    half = Math.max(1, Math.round(animPersonW * ledCount / 2));
+  } else {
+    half = Math.max(1, Math.floor(activeCount / 2));
+  }
+
+  // ── build lit LED set ──────────────────────────────────────────────────
+  const cIdx  = Math.round(animCenter);
+  const litSet = new Set();
+  // always show some LEDs at home when idle (3 LEDs at home)
+  const idleHalf = Math.max(1, Math.floor(activeCount / 4));
+  const isNearHome = !animDetected && Math.abs(animCenter - HOME) < 1.5;
+
+  if (isNearHome) {
+    for (let i = 0; i <= idleHalf; i++) {
+      if (i < ledCount) litSet.add(i);
+    }
+  } else {
+    for (let i = cIdx - half; i <= cIdx + half; i++) {
+      if (i >= 0 && i < ledCount) litSet.add(i);
+    }
+  }
+
+  // ── paint LEDs ────────────────────────────────────────────────────────
+  if (!chaseTimer) renderLEDs(litSet, ledCount, animDetected);
+
+  // ── position bar ──────────────────────────────────────────────────────
+  updatePosBar(litSet, ledCount);
+
+  requestAnimationFrame(animLoop);
+}
+
+function renderLEDs(litSet, ledCount, detected) {
+  const idle = cfg.idle_color || '#1a1a2e';
+  const act  = cfg.active_color || '#ff6b6b';
+  const bri  = (cfg.brightness || 200) / 255;
+  for (let i = 0; i < ledCount; i++) {
+    const el = document.getElementById('L' + i);
+    if (!el) continue;
+    if (litSet.has(i)) {
+      el.classList.add('on');
+      el.style.background = act;
+      el.style.color = act;
+      el.style.borderColor = act;
+      el.style.opacity = bri;
+    } else {
+      el.classList.remove('on');
+      el.style.background = idle;
+      el.style.color = 'transparent';
+      el.style.borderColor = '#30363d';
+      el.style.opacity = 1;
+    }
+  }
+  // update count label
+  document.getElementById('la').textContent = litSet.size;
+  const arr = [...litSet];
+  if (arr.length > 0) {
+    document.getElementById('lr').textContent = 'LED ' + Math.min(...arr) + '–' + Math.max(...arr);
+  } else {
+    document.getElementById('lr').textContent = '';
+  }
+}
+
+function refreshLEDColors() {
+  // immediate repaint without waiting for next animLoop tick
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  POSITION BAR
+// ─────────────────────────────────────────────────────────────────────────────
+let reversed = true;  // default right-to-left
+
+function toggleReverse() {
+  reversed = !reversed;
+  document.getElementById('rev-btn').classList.toggle('active', reversed);
+  document.getElementById('pb-dir').textContent = reversed ? 'Right → Left' : 'Left → Right';
+  // move home marker to correct side
+  document.getElementById('pos-home').style.left = (reversed ? 98 : 0) + '%';
+}
+
+function updatePosBar(litSet, ledCount) {
+  const fill = document.getElementById('pos-fill');
+  const glow = document.getElementById('pos-glow');
+  if (!litSet || litSet.size === 0) {
+    // Show home dot only
+    const homeX = reversed ? 98 : 0;
+    fill.style.left = homeX + '%'; fill.style.width = '1%';
+    glow.style.left = homeX + '%'; glow.style.width = '1%';
+    return;
+  }
+  const arr = [...litSet];
+  const mn = Math.min(...arr) / ledCount;
+  const mx = (Math.max(...arr) + 1) / ledCount;
+  const w  = (mx - mn) * 100;
+  const left = reversed ? (1 - mx) * 100 : mn * 100;
+  const col = cfg.active_color || '#ff6b6b';
+  fill.style.background = `linear-gradient(90deg, ${col}, ${col}cc)`;
+  fill.style.boxShadow  = `0 0 10px 2px ${col}66`;
+  glow.style.background = col;
+  fill.style.left = left + '%'; fill.style.width = w + '%';
+  glow.style.left = left + '%'; glow.style.width = w + '%';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  SPREAD MODE  (Fixed / Proportional toggle)
+// ─────────────────────────────────────────────────────────────────────────────
+function setSpreadMode(mode) {
+  spreadMode = mode;
+  S('led_spread_mode', mode);
+  document.getElementById('mode-fixed').classList.toggle('active', mode === 'fixed');
+  document.getElementById('mode-prop').classList.toggle('active', mode === 'proportional');
+  const alcWrap = document.getElementById('alc-wrap');
+  alcWrap.classList.toggle('dimmed', mode === 'proportional');
+  const lbl = document.getElementById('led-mode-lbl');
+  lbl.textContent = mode === 'proportional' ? '(auto size)' : '';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  NETWORK STREAM TOGGLE
+// ─────────────────────────────────────────────────────────────────────────────
+function toggleStream() {
+  fetch('/api/toggle-stream', {method:'POST'}).then(r => r.json()).then(d => {
+    streamEnabled = d.stream_enabled;
+    refreshStreamUI();
+    const feed = document.getElementById('videoFeed');
+    const ph   = document.getElementById('streamPlaceholder');
+    if (!runMode && feed) feed.style.display = streamEnabled ? '' : 'none';
+    if (!runMode && ph)   ph.style.display   = streamEnabled ? 'none' : 'flex';
+  }).catch(() => {});
+}
+function refreshStreamUI() {
+  const btn  = document.getElementById('stream-btn');
+  const info = document.getElementById('s-stream');
+  btn.textContent = streamEnabled ? '📡 STREAM ON' : '📡 STREAM OFF';
+  btn.className   = 'stream-btn' + (streamEnabled ? '' : ' off');
+  if (info) { info.textContent = streamEnabled ? 'on' : 'off'; info.className = 'sv ' + (streamEnabled ? 'son' : 'sof'); }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  POLL DETECTION  (~350 ms)
+// ─────────────────────────────────────────────────────────────────────────────
+function poll() {
+  fetch('/api/detection').then(r => r.json()).then(d => {
+    const on = d.detected;
+
+    // Update animation target from backend data
+    const ledCount = cfg.led_count || 50;
+    animDetected = on;
+    if (on) {
+      animTarget  = (d.cx || 0.5) * ledCount;
+      animPersonW = d.person_w || 0;
+    }
+
+    // Update HUD
+    document.getElementById('fps-b').textContent  = d.fps + ' FPS';
+    document.getElementById('fps-pill').textContent = d.fps + ' FPS';
+    document.getElementById('s-fps').textContent  = d.fps;
+    document.getElementById('s-conf').textContent = on ? (d.confidence*100).toFixed(0)+'%' : '—';
+    document.getElementById('s-det').textContent  = on ? '✓ Detected' : '✗ None';
+    document.getElementById('s-det').className    = 'sv ' + (on ? 'son' : 'sof');
+    document.getElementById('s-leds').textContent = on ? d.active_leds.length : 0;
+    document.getElementById('det-b').textContent  = on ? 'DETECTED' : 'NO DETECT';
+    document.getElementById('det-b').className    = 'badge ' + (on ? 'bg' : 'br');
+    const dp = document.getElementById('det-pill');
+    dp.textContent = on ? 'Person detected' : 'No person';
+    dp.className   = 'pill ' + (on ? 'pill-g' : 'pill-r');
+    document.getElementById('conf-pill').textContent = 'Conf: ' + (on ? (d.confidence*100).toFixed(0)+'%' : '--');
+
+    if (d.use_yolo) {
+      document.getElementById('s-eng').textContent  = 'YOLOv8n';
+      document.getElementById('s-eng').className    = 'eng ey';
+      document.getElementById('eng-b').textContent  = 'YOLO';
+      document.getElementById('eng-b').className    = 'badge bg';
+    }
+  }).catch(() => {});
+}
+
+function pollStatus() {
+  fetch('/api/status').then(r => r.json()).then(d => {
+    var banner = document.getElementById('svc-stopped-banner');
+    var cmd = document.getElementById('svc-stopped-cmd');
+    if (banner) banner.style.display = d.camera_active ? 'none' : 'block';
+    if (cmd) cmd.style.display = d.camera_active ? 'none' : 'block';
+    const el = document.getElementById('s-cam');
+    el.textContent = d.camera_active ? 'active' : 'offline';
+    el.className   = 'sv ' + (d.camera_active ? 'son' : 'sof');
+    if (typeof d.stream_enabled !== 'undefined') { streamEnabled = d.stream_enabled; refreshStreamUI(); }
+  }).catch(() => {});
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  UTILS
+// ─────────────────────────────────────────────────────────────────────────────
+function V(id, v, suf) {
+  const n = parseFloat(v);
+  document.getElementById(id).textContent = (n > 0 && n < 1 ? n.toFixed(2) : Math.round(n)) + suf;
+}
+function S(k, v) {
+  cfg[k] = v;
+  fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({[k]: v})}).catch(() => {});
+}
+function syncAlvMax(n) {
+  const el = document.getElementById('active_leds_count');
+  if (!el) return;
+  el.max = n;
+  if (+el.value > n) { el.value = n; S('active_leds_count', n); V('alv', n, ' LEDs'); }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  LED STRIP BUILD
+// ─────────────────────────────────────────────────────────────────────────────
+function buildStrip(n) {
+  const s = document.getElementById('leds');
+  s.innerHTML = '';
+  for (let i = 0; i < n; i++) {
+    const d = document.createElement('div');
+    d.className = 'led'; d.id = 'L' + i; s.appendChild(d);
+  }
+  document.getElementById('lt').textContent  = n;
+  document.getElementById('lc-big').textContent = n;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  TEST BUTTONS
+// ─────────────────────────────────────────────────────────────────────────────
+function testAll() {
+  const n = cfg.led_count || 50, c = cfg.active_color || '#ff6b6b';
+  for (let i = 0; i < n; i++)
+    fetch('/api/test-led', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({led_index:i, color:c})});
+  const all = new Set([...Array(n).keys()]);
+  renderLEDs(all, n, true);
+  setTimeout(() => renderLEDs(new Set(), n, false), 1500);
+}
+function testRand() {
+  const n = cfg.led_count || 50, c = cfg.active_color || '#ff6b6b';
+  const i = Math.floor(Math.random() * n);
+  fetch('/api/test-led', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({led_index:i, color:c})});
+  renderLEDs(new Set([i]), n, true);
+  setTimeout(() => renderLEDs(new Set(), n, false), 700);
+}
+function chaseAnim() {
+  if (chaseTimer) { clearInterval(chaseTimer); chaseTimer = null; return; }
+  const n = cfg.led_count || 50; let pos = 0;
+  chaseTimer = setInterval(() => {
+    const s = new Set([pos%n,(pos+1)%n,(pos+2)%n]);
+    renderLEDs(s, n, true);
+    fetch('/api/test-led', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({led_index:pos%n, color:cfg.active_color||'#ff6b6b'})});
+    pos++;
+    if (pos > n + 3) { clearInterval(chaseTimer); chaseTimer = null; renderLEDs(new Set(), n, false); }
+  }, 80);
+}
+function resetCfg() {
+  if (!confirm('Reset to defaults?')) return;
+  fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({brightness:200, smoothing:0.3, led_count:50, active_leds_count:15,
+      active_color:'#ff6b6b', idle_color:'#1a1a2e', confidence_threshold:0.3, led_spread_mode:'fixed'})})
+    .then(() => location.reload());
+}
+function saveCfg() {
+  fetch('/api/config').then(r => r.json()).then(d => {
+    const a = document.createElement('a');
+    a.href = 'data:application/json,' + encodeURIComponent(JSON.stringify(d, null, 2));
+    a.download = 'config.json'; a.click();
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  STRIP CONFIG
+// ─────────────────────────────────────────────────────────────────────────────
+function renderStrips(strips) {
+  const c = document.getElementById('strips-container'); c.innerHTML = '';
+  (strips || []).forEach((s, i) => {
+    const opts = [18,12,13,19,21,10,9,11].map(p =>
+      `<option value="${p}" ${p==s.gpio_pin?'selected':''}>${p}</option>`).join('');
+    c.innerHTML += `<div class="strip-card" id="sc${i}">
+      <div class="strip-header">
+        <span class="strip-label">${s.label||'Strip '+(i+1)}</span>
+        <button class="toggle ${s.enabled?'on':''}" id="tog${i}" onclick="toggleStrip(${i})"></button>
+      </div>
+      <div class="strip-fields">
+        <div class="sf"><label>GPIO Pin</label><select onchange="updateStrip(${i},'gpio_pin',+this.value)">${opts}</select></div>
+        <div class="sf"><label>LED Count</label><input type="number" min="1" max="1000" value="${s.led_count}" onchange="updateStrip(${i},'led_count',+this.value)"></div>
+        <div class="sf"><label>Color</label><input type="color" value="${s.color||'#ff6b6b'}" oninput="updateStrip(${i},'color',this.value)"></div>
+        <div class="sf"><label>Label</label><input type="text" value="${s.label||''}" maxlength="12" onchange="updateStrip(${i},'label',this.value)"></div>
+      </div></div>`;
+  });
+}
+function toggleStrip(i) {
+  const c = load_cfg_local(); c.strips[i].enabled = !c.strips[i].enabled;
+  save_cfg_local(c); S('strips', c.strips); renderStrips(c.strips);
+}
+function updateStrip(i, key, val) {
+  const c = load_cfg_local(); c.strips[i][key] = val;
+  save_cfg_local(c); S('strips', c.strips);
+}
+function addStrip() {
+  const c = load_cfg_local();
+  const pins = [18,12,13,19,21,10,9,11];
+  const used = (c.strips||[]).map(s => s.gpio_pin);
+  const pin = pins.find(p => !used.includes(p)) || 18;
+  c.strips = c.strips || [];
+  c.strips.push({gpio_pin:pin, led_count:50, enabled:false, label:'Strip '+(c.strips.length+1), color:'#58a6ff'});
+  save_cfg_local(c); S('strips', c.strips); renderStrips(c.strips);
+}
+function load_cfg_local() { return JSON.parse(JSON.stringify(_cfgCache)); }
+function save_cfg_local(c) { _cfgCache = JSON.parse(JSON.stringify(c)); }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  QUICK TEST GRID
+// ─────────────────────────────────────────────────────────────────────────────
+function buildQL() {
+  const g = document.getElementById('qg');
+  for (let i = 0; i < 10; i++) {
+    const b = document.createElement('div');
+    b.className = 'ql'; b.textContent = i;
+    b.onclick = () => {
+      b.classList.add('fl');
+      fetch('/api/test-led', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({led_index:i, color:cfg.active_color||'#ff6b6b'})});
+      renderLEDs(new Set([i]), cfg.led_count||50, true);
+      setTimeout(() => { b.classList.remove('fl'); renderLEDs(new Set(), cfg.led_count||50, false); }, 600);
+    };
+    g.appendChild(b);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  INIT
+// ─────────────────────────────────────────────────────────────────────────────
+function loadCfg() {
+  fetch('/api/config').then(r => r.json()).then(d => {
+    Object.assign(cfg, d);
+    _cfgCache = JSON.parse(JSON.stringify(d));
+    ['brightness','smoothing','confidence_threshold','detection_threshold',
+     'led_count','active_color','idle_color','active_leds_count'].forEach(k => {
+      const el = document.getElementById(k); if (el) el.value = d[k];
+    });
+    V('bv',  d.brightness, '');
+    V('sv2', d.smoothing, '');
+    V('cv',  d.confidence_threshold, '');
+    V('dtv', d.detection_threshold, '%');
+    V('alv', d.active_leds_count || 15, ' LEDs');
+    const alvEl = document.getElementById('active_leds_count');
+    if (alvEl) alvEl.max = d.led_count || 50;
+    if (d.led_spread_mode) setSpreadMode(d.led_spread_mode);
+    buildStrip(d.led_count || 50);
+    renderStrips(d.strips || []);
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadCfg();
+  buildQL();
+  requestAnimationFrame(animLoop);
+  document.getElementById('pos-home').style.left = (reversed ? 98 : 0) + '%';
+  // Apply saved run mode before starting poll (sets correct interval)
+  applyRunMode();
+  statusTimer = setInterval(pollStatus, 4000);
+  pollStatus();
+  poll();
+  startSleepTimer();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  RUN MODE
+// ─────────────────────────────────────────────────────────────────────────────
+let runMode = localStorage.getItem('runMode') === '1';
+let pollTimer = null;
+let statusTimer = null;
+
+function applyRunMode() {
+  document.body.classList.toggle('run-mode', runMode);
+  const btn = document.getElementById('run-btn');
+  if (btn) { btn.textContent = runMode ? 'SETUP MODE' : 'RUN MODE'; btn.classList.toggle('active', runMode); }
+  const feed = document.getElementById('videoFeed');
+  const ph   = document.getElementById('streamPlaceholder');
+  if (runMode) {
+    if (feed) feed.src = '';            // stop MJPEG — no more bandwidth or JPEG encoding
+    if (ph)   ph.style.display = 'none';
+    if (streamEnabled) toggleStream();  // auto-disable network stream
+    clearInterval(pollTimer);
+    pollTimer = setInterval(poll, 2000);
+  } else {
+    if (feed) { feed.src = '/video_feed'; feed.style.display = ''; }
+    if (ph)   ph.style.display = 'none';
+    clearInterval(pollTimer);
+    pollTimer = setInterval(poll, 350);
+  }
+}
+
+function toggleRunMode() {
+  runMode = !runMode;
+  localStorage.setItem('runMode', runMode ? '1' : '0');
+  applyRunMode();
+}
+
+function openShutdown() { document.getElementById('shutdownModal').classList.add('open'); }
+function closeShutdown() { document.getElementById('shutdownModal').classList.remove('open'); }
+function doShutdown() { document.getElementById('shutdownModal').classList.remove('open'); document.getElementById('shutdownDone').style.display='none'; document.getElementById('shutdownDone').style.display='flex'; fetch('/api/shutdown', {method:'POST'}).catch(()=>{}); }
+</script>
+<div class="shutdown-modal" id="shutdownModal"><div class="shutdown-modal-box"><h2>⚠ Stop Service?</h2><p>This will stop the detection service.<br>systemd will restart it automatically (~5 s).</p><div class="smd-row"><button class="smd-cancel" onclick="closeShutdown()">Cancel</button><button class="smd-confirm" onclick="doShutdown()">Stop Service</button></div></div></div><div class="shutdown-done" id="shutdownDone" style="display:none;position:fixed;inset:0;background:#0d1117;z-index:9999;align-items:center;justify-content:center;flex-direction:column;gap:16px;color:#f85149;font-family:monospace;font-size:18px"><div>⏻ Service stopping…</div><div style="font-size:12px;color:#8b949e">Restarting via systemd in ~5 s</div></div></body>
+</html>

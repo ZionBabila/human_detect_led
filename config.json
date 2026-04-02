@@ -1,0 +1,29 @@
+{
+  "brightness": 200,
+  "smoothing": 0.3,
+  "detection_threshold": 74,
+  "led_count": 32,
+  "active_color": "#00eeff",
+  "idle_color": "#000000",
+  "confidence_threshold": 0.3,
+  "gpio_pin": 18,
+  "strips": [
+    {
+      "color": "#092a13",
+      "enabled": true,
+      "gpio_pin": 18,
+      "label": "Strip 1",
+      "led_count": 32
+    },
+    {
+      "color": "#58a6ff",
+      "enabled": false,
+      "gpio_pin": 12,
+      "label": "Strip 2",
+      "led_count": 50
+    }
+  ],
+  "active_leds_count": 15,
+  "led_spread_mode": "proportional",
+  "remote_btn_pin": 17
+}
