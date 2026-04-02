@@ -295,6 +295,30 @@ body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;height:1
     </div>
 
     <div class="panel">
+      <div class="pt">Camera 2 — Wide View</div>
+      <div class="sr">
+        <span class="sl">Status</span>
+        <span class="sv" id="cam2-status">off</span>
+      </div>
+      <div style="margin:8px 0 4px">
+        <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Device Index</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <input type="number" id="cam2-index" min="-1" max="9" value="-1"
+            style="width:60px;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:4px;padding:4px 6px;font-size:12px"
+            placeholder="-1">
+          <button class="btn bd" style="font-size:9px;padding:4px 8px" onclick="scanCameras()">Scan</button>
+          <button class="btn bb2" style="font-size:9px;padding:4px 8px" onclick="applyCam2()">Apply</button>
+        </div>
+        <div style="font-size:9px;color:#6e7681;margin-top:4px">-1 = off &nbsp;·&nbsp; 0,1,2… = device index</div>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <button class="btn bd" id="cam2-fh-btn" style="flex:1;font-size:9px;padding:4px" onclick="toggleCam2Flip('cam2_flip_h')">Flip H</button>
+        <button class="btn bd" id="cam2-fv-btn" style="flex:1;font-size:9px;padding:4px" onclick="toggleCam2Flip('cam2_flip_v')">Flip V</button>
+      </div>
+      <div id="cam2-scan-result" style="font-size:9px;color:#3fb950;margin-top:6px;display:none"></div>
+    </div>
+
+    <div class="panel">
       <div class="pt">System</div>
       <div class="sr"><span class="sl">Camera</span><span class="sv" id="s-cam">—</span></div>
       <div class="sr"><span class="sl">Server</span><span class="sv son">online</span></div>
@@ -645,6 +669,49 @@ function resetCfg() {
       flip_h:true, flip_v:false})})
     .then(() => location.reload());
 }
+// ── Camera 2 ──────────────────────────────────────────────────────────────────
+function applyCam2() {
+  const idx = parseInt(document.getElementById('cam2-index').value);
+  if (isNaN(idx) || idx < -1 || idx > 9) { alert('Enter -1 to disable or 0-9 for device index'); return; }
+  cfg.cam2_index = idx;
+  S('cam2_index', idx);
+  const st = document.getElementById('cam2-status');
+  if (st) { st.textContent = idx < 0 ? 'off' : 'active (index ' + idx + ')'; st.className = 'sv ' + (idx < 0 ? 'sof' : 'son'); }
+}
+function scanCameras() {
+  const btn = event.target; btn.disabled = true; btn.textContent = '…';
+  const res = document.getElementById('cam2-scan-result');
+  fetch('/api/scan-cameras').then(r => r.json()).then(d => {
+    btn.disabled = false; btn.textContent = 'Scan';
+    if (!d.cameras || d.cameras.length === 0) {
+      res.style.display = 'block'; res.style.color = '#f85149';
+      res.textContent = 'No cameras found'; return;
+    }
+    res.style.display = 'block'; res.style.color = '#3fb950';
+    res.textContent = 'Found: ' + d.cameras.map(i => 'index ' + i).join(', ');
+  }).catch(() => { btn.disabled = false; btn.textContent = 'Scan'; });
+}
+function toggleCam2Flip(key) {
+  const cur  = cfg[key] || false;
+  const next = !cur;
+  cfg[key] = next;
+  S(key, next);
+  const btnId = key === 'cam2_flip_h' ? 'cam2-fh-btn' : 'cam2-fv-btn';
+  const btn = document.getElementById(btnId);
+  if (btn) btn.className = 'btn ' + (next ? 'bb2' : 'bd');
+}
+function _applyCam2UI() {
+  const idx = cfg.cam2_index !== undefined ? cfg.cam2_index : -1;
+  const el = document.getElementById('cam2-index');
+  if (el) el.value = idx;
+  const st = document.getElementById('cam2-status');
+  if (st) { st.textContent = idx < 0 ? 'off' : 'active (index ' + idx + ')'; st.className = 'sv ' + (idx < 0 ? 'sof' : 'son'); }
+  const fh = document.getElementById('cam2-fh-btn');
+  const fv = document.getElementById('cam2-fv-btn');
+  if (fh) fh.className = 'btn ' + (cfg.cam2_flip_h ? 'bb2' : 'bd');
+  if (fv) fv.className = 'btn ' + (cfg.cam2_flip_v ? 'bb2' : 'bd');
+}
+
 function toggleFlip(key) {
   const cur = cfg[key] !== false;  // default true for flip_h
   const next = !cur;
@@ -759,6 +826,7 @@ function loadCfg() {
     renderStrips(d.strips || []);
     syncTotalLEDs(d.strips || []);
     _applyFlipUI();
+    _applyCam2UI();
   });
 }
 

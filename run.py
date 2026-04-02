@@ -37,6 +37,7 @@ DEFAULT = {
     'active_color': '#ff6b6b', 'idle_color': '#1a1a2e',
     'confidence_threshold': 0.3, 'gpio_pin': 18, 'remote_btn_pin': 17,
     'flip_h': True, 'flip_v': False,
+    'cam2_index': -1, 'cam2_flip_h': False, 'cam2_flip_v': False,
     'strips': [{'gpio_pin': 18, 'led_count': 50, 'enabled': True,
                 'label': 'Strip 1', 'color': '#ff6b6b'}]
 }
@@ -72,9 +73,17 @@ def _validate_cfg(updates: dict):
         if _HEX_RE.match(v): clean[k] = v
         else: errors.append(f'{k}: must be #rrggbb hex color')
 
-    for k in ('flip_h', 'flip_v'):
+    for k in ('flip_h', 'flip_v', 'cam2_flip_h', 'cam2_flip_v'):
         if k in updates:
             clean[k] = bool(updates[k])
+
+    if 'cam2_index' in updates:
+        try:
+            v = int(updates['cam2_index'])
+            if -1 <= v <= 9: clean['cam2_index'] = v
+            else: errors.append('cam2_index must be -1 (off) or 0-9')
+        except (ValueError, TypeError):
+            errors.append('cam2_index: must be integer')
 
     if 'led_spread_mode' in updates:
         v = str(updates['led_spread_mode'])
@@ -362,13 +371,15 @@ _k_close  = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
 _k_dilate = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (20, 20))
 
 # ── shared detection state ────────────────────────────────────────────────────
-frame_lock = threading.Lock()
-det_lock   = threading.Lock()
-raw_lock   = threading.Lock()
-_new_frame = threading.Event()
-is_running = True
+frame_lock  = threading.Lock()
+det_lock    = threading.Lock()
+raw_lock    = threading.Lock()
+raw2_lock   = threading.Lock()
+_new_frame  = threading.Event()
+is_running  = True
 current_frame = None
 latest_raw    = None
+latest_raw2   = None   # second camera; None = not active
 
 detection_state = {
     "detected": False, "bbox": None, "active_leds": [],
@@ -587,6 +598,50 @@ def cam_worker():
         cam.release()
         if is_running: time.sleep(2)
 
+# ── second camera thread ──────────────────────────────────────────────────────
+def cam2_worker():
+    global latest_raw2, is_running
+    while is_running:
+        _c2 = load_cfg()
+        idx = int(_c2.get('cam2_index', -1))
+        if idx < 0:
+            with raw2_lock: latest_raw2 = None
+            time.sleep(2); continue
+        cam = None
+        try:
+            c = cv2.VideoCapture(idx, cv2.CAP_V4L2)
+            if c.isOpened(): cam = c; log.info("Camera2: device %d", idx)
+            else: c.release()
+        except Exception: pass
+        if cam is None:
+            log.warning("Camera2: index %d not found, retrying in 5s", idx)
+            with raw2_lock: latest_raw2 = None
+            time.sleep(5); continue
+        cam.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
+        cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        cam.set(cv2.CAP_PROP_BUFFERSIZE,   1)
+        cam.set(cv2.CAP_PROP_FPS,          30)
+        fails = 0; last_idx = idx
+        while is_running:
+            _cc = load_cfg()
+            if int(_cc.get('cam2_index', -1)) != last_idx: break
+            if check_thermal() == 3: time.sleep(1); continue
+            ret, frame = cam.read()
+            if not ret:
+                fails += 1
+                if fails > 30: log.warning("Camera2: too many failures, reconnecting"); break
+                time.sleep(0.03); continue
+            fails = 0
+            fh = _cc.get('cam2_flip_h', False)
+            fv = _cc.get('cam2_flip_v', False)
+            if fh and fv:  frame = cv2.flip(frame, -1)
+            elif fh:       frame = cv2.flip(frame,  1)
+            elif fv:       frame = cv2.flip(frame,  0)
+            with raw2_lock: latest_raw2 = frame
+        cam.release()
+        with raw2_lock: latest_raw2 = None
+        if is_running: time.sleep(2)
+
 # ── detect thread ─────────────────────────────────────────────────────────────
 def detect_worker():
     global current_frame, is_running
@@ -597,6 +652,12 @@ def detect_worker():
         if frame is None: continue
         try:
             cfg = load_cfg()
+            with raw2_lock: frame2 = latest_raw2
+            if frame2 is not None:
+                h1, h2 = frame.shape[0], frame2.shape[0]
+                if h1 != h2:
+                    frame2 = cv2.resize(frame2, (int(frame2.shape[1] * h1 / h2), h1))
+                frame = np.hstack([frame, frame2])
             run_detection(frame.copy(), cfg)
             if get_remote():
                 out = frame.copy()
@@ -828,6 +889,20 @@ def test_led_route():
     threading.Thread(target=_flash, daemon=True).start()
     return jsonify({'status': 'ok', 'led_available': LED_AVAILABLE})
 
+@app.route('/api/scan-cameras')
+@require_login
+def scan_cameras():
+    found = []
+    for i in range(8):
+        try:
+            c = cv2.VideoCapture(i, cv2.CAP_V4L2)
+            if c.isOpened():
+                found.append(i)
+            c.release()
+        except Exception:
+            pass
+    return jsonify({'cameras': found})
+
 @app.route('/api/thermal')
 @require_login
 def get_thermal():
@@ -877,7 +952,7 @@ if __name__ == '__main__':
     init_strips(strips, int(cfg0.get('brightness', 200)))
     init_button(int(cfg0.get('remote_btn_pin', 17)))
 
-    for target in [led_worker, cam_worker, detect_worker, hog_worker]:
+    for target in [led_worker, cam_worker, cam2_worker, detect_worker, hog_worker]:
         threading.Thread(target=target, daemon=True).start()
 
     log.info("Human Detect LED v%s starting", APP_VERSION)
