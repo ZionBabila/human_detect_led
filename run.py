@@ -664,13 +664,15 @@ def detect_worker():
             cfg = load_cfg()
             with raw2_lock: frame2 = latest_raw2
             if frame2 is not None:
-                h1, h2 = frame.shape[0], frame2.shape[0]
-                if h1 != h2:
-                    frame2 = cv2.resize(frame2, (int(frame2.shape[1] * h1 / h2), h1))
+                h, w = frame.shape[:2]
+                # Scale both cameras to half width so stitched frame = original size
+                half_w = w // 2
+                f1 = cv2.resize(frame,  (half_w, h))
+                f2 = cv2.resize(frame2, (half_w, h))
                 if cfg.get('cam2_side', 'right') == 'left':
-                    frame = np.hstack([frame2, frame])
+                    frame = np.hstack([f2, f1])
                 else:
-                    frame = np.hstack([frame, frame2])
+                    frame = np.hstack([f1, f2])
             run_detection(frame.copy(), cfg)
             out = frame.copy()
             with det_lock: st = detection_state.copy()
