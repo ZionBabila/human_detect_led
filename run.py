@@ -36,6 +36,7 @@ DEFAULT = {
     'led_count': 50, 'active_leds_count': 15, 'led_spread_mode': 'fixed',
     'active_color': '#ff6b6b', 'idle_color': '#1a1a2e',
     'confidence_threshold': 0.3, 'gpio_pin': 18, 'remote_btn_pin': 17,
+    'flip_h': True, 'flip_v': False,
     'strips': [{'gpio_pin': 18, 'led_count': 50, 'enabled': True,
                 'label': 'Strip 1', 'color': '#ff6b6b'}]
 }
@@ -70,6 +71,10 @@ def _validate_cfg(updates: dict):
         v = str(updates[k])
         if _HEX_RE.match(v): clean[k] = v
         else: errors.append(f'{k}: must be #rrggbb hex color')
+
+    for k in ('flip_h', 'flip_v'):
+        if k in updates:
+            clean[k] = bool(updates[k])
 
     if 'led_spread_mode' in updates:
         v = str(updates['led_spread_mode'])
@@ -572,7 +577,11 @@ def cam_worker():
                 if fails > 30: log.warning("Camera: too many read failures, reconnecting"); break
                 time.sleep(0.03); continue
             fails = 0
-            frame = cv2.flip(frame, 1)
+            _fc = load_cfg()
+            fh, fv = _fc.get('flip_h', True), _fc.get('flip_v', False)
+            if fh and fv:  frame = cv2.flip(frame, -1)
+            elif fh:       frame = cv2.flip(frame,  1)
+            elif fv:       frame = cv2.flip(frame,  0)
             with raw_lock: latest_raw = frame
             _new_frame.set()
         cam.release()

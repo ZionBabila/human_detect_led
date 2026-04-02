@@ -250,6 +250,8 @@ body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;height:1
       <div class="btn-row">
         <button class="btn bg2" onclick="testAll()">Test All</button>
         <button class="btn bd"  onclick="resetCfg()">Reset</button>
+        <button class="btn bd" id="flip-h-btn" onclick="toggleFlip('flip_h')" title="Mirror image left-right">Flip H</button>
+        <button class="btn bd" id="flip-v-btn" onclick="toggleFlip('flip_v')" title="Flip image upside-down">Flip V</button>
       </div>
     </div>
   </div>
@@ -639,8 +641,24 @@ function resetCfg() {
   if (!confirm('Reset to defaults?')) return;
   fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({brightness:200, smoothing:0.3, led_count:50, active_leds_count:15,
-      active_color:'#ff6b6b', idle_color:'#1a1a2e', confidence_threshold:0.3, led_spread_mode:'fixed'})})
+      active_color:'#ff6b6b', idle_color:'#1a1a2e', confidence_threshold:0.3, led_spread_mode:'fixed',
+      flip_h:true, flip_v:false})})
     .then(() => location.reload());
+}
+function toggleFlip(key) {
+  const cur = cfg[key] !== false;  // default true for flip_h
+  const next = !cur;
+  cfg[key] = next;
+  S(key, next);
+  const btnId = key === 'flip_h' ? 'flip-h-btn' : 'flip-v-btn';
+  const btn = document.getElementById(btnId);
+  if (btn) btn.className = 'btn ' + (next ? 'bb2' : 'bd');
+}
+function _applyFlipUI() {
+  const fh = document.getElementById('flip-h-btn');
+  const fv = document.getElementById('flip-v-btn');
+  if (fh) fh.className = 'btn ' + (cfg.flip_h !== false ? 'bb2' : 'bd');
+  if (fv) fv.className = 'btn ' + (cfg.flip_v ? 'bb2' : 'bd');
 }
 function saveCfg() {
   fetch('/api/config').then(r => r.json()).then(d => {
@@ -740,6 +758,7 @@ function loadCfg() {
     if (d.led_spread_mode) setSpreadMode(d.led_spread_mode);
     renderStrips(d.strips || []);
     syncTotalLEDs(d.strips || []);
+    _applyFlipUI();
   });
 }
 
