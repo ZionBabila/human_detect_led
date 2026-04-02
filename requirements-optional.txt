@@ -1,0 +1,9 @@
+# Optional: YOLOv8 human detection (higher accuracy, uses more CPU/RAM)
+ultralytics>=8.0.0
+
+# Optional: WS281x RGB LED hardware control (requires sudo / root)
+rpi_ws281x>=4.3.4
+
+# Optional: GPIO button support (choose one)
+gpiozero>=2.0
+RPi.GPIO>=0.7.1

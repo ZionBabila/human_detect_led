@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LED Controller — Login</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;
+     height:100vh;display:flex;align-items:center;justify-content:center}
+.card{background:#161b22;border:1px solid #30363d;border-radius:10px;
+      padding:36px 32px;width:100%;max-width:340px}
+.logo{text-align:center;margin-bottom:24px}
+.logo-dot{width:14px;height:14px;border-radius:50%;background:#238636;
+           display:inline-block;margin-right:8px;vertical-align:middle;
+           box-shadow:0 0 8px #238636}
+h1{font-size:16px;font-weight:600;text-align:center;color:#e6edf3}
+.sub{font-size:11px;color:#6e7681;text-align:center;margin-top:4px;margin-bottom:28px}
+label{display:block;font-size:10px;font-weight:700;color:#8b949e;
+      text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px}
+input[type=password]{width:100%;background:#0d1117;color:#e6edf3;
+  border:1px solid #30363d;border-radius:6px;padding:9px 12px;font-size:13px;
+  font-family:inherit;outline:none;transition:border-color .15s}
+input[type=password]:focus{border-color:#1f6feb}
+button{margin-top:16px;width:100%;background:#238636;color:#fff;border:none;
+       border-radius:6px;padding:10px;font-size:13px;font-weight:700;
+       cursor:pointer;font-family:inherit;transition:background .15s}
+button:hover{background:#2ea043}
+.err{background:#da363322;border:1px solid #da3633;border-radius:6px;
+     padding:8px 12px;font-size:11px;color:#f85149;margin-bottom:16px;display:none}
+.err.show{display:block}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo"><span class="logo-dot"></span></div>
+  <h1>LED Controller</h1>
+  <div class="sub">Enter your password to continue</div>
+  {% if error %}
+  <div class="err show">{{ error }}</div>
+  {% endif %}
+  <form method="POST">
+    <label>Password</label>
+    <input type="password" name="password" autofocus autocomplete="current-password">
+    <button type="submit">Sign in</button>
+  </form>
+</div>
+</body>
+</html>

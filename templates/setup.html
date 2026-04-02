@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LED Controller — Setup</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;
+     min-height:100vh;display:flex;align-items:flex-start;justify-content:center;
+     padding:32px 16px}
+.wrap{width:100%;max-width:480px}
+.header{text-align:center;margin-bottom:32px}
+.dot{width:10px;height:10px;border-radius:50%;background:#238636;display:inline-block;
+     margin-right:8px;vertical-align:middle;box-shadow:0 0 6px #238636}
+h1{font-size:18px;font-weight:700;margin-top:12px}
+.sub{font-size:12px;color:#6e7681;margin-top:4px}
+
+/* Steps indicator */
+.steps{display:flex;justify-content:center;gap:0;margin-bottom:32px}
+.step{display:flex;align-items:center}
+.step-dot{width:28px;height:28px;border-radius:50%;border:2px solid #30363d;
+           display:flex;align-items:center;justify-content:center;font-size:11px;
+           font-weight:700;color:#6e7681;background:#161b22;transition:all .2s;flex-shrink:0}
+.step-dot.active{border-color:#1f6feb;color:#58a6ff;background:#1f6feb22}
+.step-dot.done{border-color:#238636;color:#3fb950;background:#23863622}
+.step-line{width:40px;height:2px;background:#30363d;transition:background .2s}
+.step-line.done{background:#238636}
+
+/* Card */
+.card{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:28px}
+.card-title{font-size:13px;font-weight:700;color:#e6edf3;margin-bottom:4px}
+.card-sub{font-size:11px;color:#6e7681;margin-bottom:22px}
+
+label{display:block;font-size:10px;font-weight:700;color:#8b949e;
+      text-transform:uppercase;letter-spacing:.8px;margin-bottom:6px;margin-top:14px}
+label:first-of-type{margin-top:0}
+input[type=number],select{width:100%;background:#0d1117;color:#e6edf3;
+  border:1px solid #30363d;border-radius:6px;padding:9px 12px;font-size:13px;
+  font-family:inherit;outline:none;transition:border-color .15s}
+input[type=number]:focus,select:focus{border-color:#1f6feb}
+.hint{font-size:10px;color:#6e7681;margin-top:4px}
+
+.strip-row{background:#0d1117;border:1px solid #30363d;border-radius:6px;
+           padding:12px;margin-bottom:8px}
+.strip-row-hdr{display:flex;justify-content:space-between;align-items:center;
+               margin-bottom:10px}
+.strip-lbl{font-size:12px;font-weight:700}
+.rm-btn{background:none;border:none;color:#6e7681;cursor:pointer;font-size:12px;
+        padding:2px 6px;border-radius:4px;transition:color .15s}
+.rm-btn:hover{color:#f85149}
+.strip-fields{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sf label{margin-top:0}
+
+.add-btn{width:100%;padding:8px;background:none;border:1px dashed #30363d;
+          border-radius:6px;color:#6e7681;font-size:11px;cursor:pointer;
+          text-transform:uppercase;letter-spacing:.5px;transition:all .15s;margin-top:8px}
+.add-btn:hover{border-color:#1f6feb;color:#58a6ff}
+
+/* Actions */
+.actions{display:flex;justify-content:space-between;margin-top:24px;gap:10px}
+.btn{padding:9px 20px;border-radius:6px;font-size:12px;font-weight:700;
+     cursor:pointer;font-family:inherit;transition:all .15s}
+.btn-primary{background:#238636;color:#fff;border:none}
+.btn-primary:hover{background:#2ea043}
+.btn-secondary{background:transparent;border:1px solid #30363d;color:#8b949e}
+.btn-secondary:hover{border-color:#58a6ff;color:#58a6ff}
+
+/* Status / feedback */
+.err{background:#da363322;border:1px solid #da3633;border-radius:6px;
+     padding:8px 12px;font-size:11px;color:#f85149;margin-top:12px;display:none}
+.err.show{display:block}
+.ok-box{background:#23863622;border:1px solid #238636;border-radius:6px;
+        padding:10px 14px;font-size:12px;color:#3fb950;margin-top:12px;display:none}
+.ok-box.show{display:flex;align-items:center;gap:8px}
+.spin{width:14px;height:14px;border:2px solid #30363d;border-top-color:#58a6ff;
+      border-radius:50%;animation:spin .7s linear infinite;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Step panels */
+.panel{display:none}
+.panel.active{display:block}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="header">
+    <div><span class="dot"></span></div>
+    <h1>Welcome to LED Controller</h1>
+    <div class="sub">Complete setup to get started — takes about 1 minute</div>
+  </div>
+
+  <!-- Step indicator -->
+  <div class="steps">
+    <div class="step"><div class="step-dot active" id="sd0">1</div></div>
+    <div class="step-line" id="sl0"></div>
+    <div class="step"><div class="step-dot" id="sd1">2</div></div>
+    <div class="step-line" id="sl1"></div>
+    <div class="step"><div class="step-dot" id="sd2">3</div></div>
+    <div class="step-line" id="sl2"></div>
+    <div class="step"><div class="step-dot" id="sd3">4</div></div>
+  </div>
+
+  <!-- Step 0: LED strips -->
+  <div class="card panel active" id="p0">
+    <div class="card-title">Configure LED Strips</div>
+    <div class="card-sub">Set GPIO pins and LED counts for each strip you have connected</div>
+    <div id="strips-container"></div>
+    <button class="add-btn" onclick="addStrip()">+ Add another strip</button>
+    <div class="err" id="e0"></div>
+    <div class="actions">
+      <span></span>
+      <button class="btn btn-primary" onclick="nextStep(0)">Next →</button>
+    </div>
+  </div>
+
+  <!-- Step 1: Detection settings -->
+  <div class="card panel" id="p1">
+    <div class="card-title">Detection Settings</div>
+    <div class="card-sub">Configure the camera and detection sensitivity</div>
+    <label>Confidence Threshold
+      <span style="color:#6e7681;font-weight:400"> — higher = less false positives</span>
+    </label>
+    <input type="range" id="confidence_threshold" min="0.1" max="0.9" step="0.05" value="0.3"
+           oninput="document.getElementById('ctv').textContent=parseFloat(this.value).toFixed(2)"
+           style="width:100%;accent-color:#238636;margin-top:6px">
+    <div style="font-size:11px;color:#3fb950;font-weight:700;margin-top:2px" id="ctv">0.30</div>
+    <label style="margin-top:18px">Smoothing
+      <span style="color:#6e7681;font-weight:400"> — reduces jitter (higher = smoother)</span>
+    </label>
+    <input type="range" id="smoothing" min="0" max="0.9" step="0.05" value="0.3"
+           oninput="document.getElementById('smv').textContent=parseFloat(this.value).toFixed(2)"
+           style="width:100%;accent-color:#238636;margin-top:6px">
+    <div style="font-size:11px;color:#3fb950;font-weight:700;margin-top:2px" id="smv">0.30</div>
+    <div class="err" id="e1"></div>
+    <div class="actions">
+      <button class="btn btn-secondary" onclick="prevStep(1)">← Back</button>
+      <button class="btn btn-primary" onclick="nextStep(1)">Next →</button>
+    </div>
+  </div>
+
+  <!-- Step 2: Test LEDs -->
+  <div class="card panel" id="p2">
+    <div class="card-title">Test LED Strips</div>
+    <div class="card-sub">Verify your strips are wired correctly before finishing</div>
+    <div style="margin-bottom:16px">
+      <button class="btn btn-primary" onclick="testLEDs()" id="test-btn"
+              style="width:100%;font-size:13px;padding:12px">
+        &#9889; Flash All Strips
+      </button>
+    </div>
+    <div class="ok-box" id="led-ok">
+      <span>LEDs flashed successfully</span>
+    </div>
+    <div style="font-size:11px;color:#6e7681;margin-top:12px">
+      If LEDs did not respond, check your wiring and GPIO pin numbers in the previous step.
+      You can re-run this test after going back.
+    </div>
+    <div class="err" id="e2"></div>
+    <div class="actions">
+      <button class="btn btn-secondary" onclick="prevStep(2)">← Back</button>
+      <button class="btn btn-primary" onclick="nextStep(2)">Finish Setup →</button>
+    </div>
+  </div>
+
+  <!-- Step 3: Done -->
+  <div class="card panel" id="p3" style="text-align:center">
+    <div style="font-size:36px;margin-bottom:12px">&#10003;</div>
+    <div class="card-title" style="font-size:16px">Setup complete!</div>
+    <div class="card-sub" style="margin-top:8px;margin-bottom:24px">
+      Your LED Controller is ready. Opening the main dashboard...
+    </div>
+    <div class="spin" style="margin:0 auto"></div>
+  </div>
+</div>
+
+<script>
+const cfg = {{ config | tojson }};
+
+// ── Strip management ──────────────────────────────────────────────────────────
+let strips = (cfg.strips && cfg.strips.length) ? JSON.parse(JSON.stringify(cfg.strips)) :
+  [{gpio_pin:18, led_count:32, enabled:true, label:'Strip 1', color:'#ff6b6b'}];
+
+const GPIO_PINS = [18, 12, 13, 19, 21, 10, 9, 11];
+
+function renderStrips() {
+  const c = document.getElementById('strips-container');
+  c.innerHTML = '';
+  strips.forEach((s, i) => {
+    const opts = GPIO_PINS.map(p =>
+      `<option value="${p}" ${p == s.gpio_pin ? 'selected' : ''}>${p}</option>`).join('');
+    c.innerHTML += `
+      <div class="strip-row">
+        <div class="strip-row-hdr">
+          <span class="strip-lbl">${s.label || 'Strip ' + (i+1)}</span>
+          ${strips.length > 1 ? `<button class="rm-btn" onclick="removeStrip(${i})">✕ Remove</button>` : ''}
+        </div>
+        <div class="strip-fields">
+          <div class="sf">
+            <label>GPIO Pin</label>
+            <select onchange="strips[${i}].gpio_pin=+this.value">${opts}</select>
+          </div>
+          <div class="sf">
+            <label>LED Count</label>
+            <input type="number" min="1" max="300" value="${s.led_count}"
+                   onchange="strips[${i}].led_count=+this.value">
+          </div>
+        </div>
+      </div>`;
+  });
+}
+
+function addStrip() {
+  const used = strips.map(s => s.gpio_pin);
+  const pin  = GPIO_PINS.find(p => !used.includes(p)) || 18;
+  strips.push({gpio_pin:pin, led_count:50, enabled:true,
+               label:'Strip ' + (strips.length+1), color:'#58a6ff'});
+  renderStrips();
+}
+
+function removeStrip(i) {
+  strips.splice(i, 1);
+  renderStrips();
+}
+
+// ── Step navigation ───────────────────────────────────────────────────────────
+let currentStep = 0;
+
+function showStep(n) {
+  document.querySelectorAll('.panel').forEach((p, i) => {
+    p.classList.toggle('active', i === n);
+  });
+  for (let i = 0; i < 4; i++) {
+    const dot  = document.getElementById('sd' + i);
+    const line = document.getElementById('sl' + i);
+    dot.className  = 'step-dot' + (i < n ? ' done' : i === n ? ' active' : '');
+    if (line) line.className = 'step-line' + (i < n ? ' done' : '');
+  }
+  currentStep = n;
+}
+
+function prevStep(n) { showStep(n - 1); }
+
+async function nextStep(n) {
+  const err = document.getElementById('e' + n);
+  err.className = 'err';
+
+  if (n === 0) {
+    // Save strips config
+    const res = await post({strips});
+    if (!res.ok) { showErr(err, res.errors); return; }
+  } else if (n === 1) {
+    // Save detection settings
+    const res = await post({
+      confidence_threshold: parseFloat(document.getElementById('confidence_threshold').value),
+      smoothing:            parseFloat(document.getElementById('smoothing').value),
+    });
+    if (!res.ok) { showErr(err, res.errors); return; }
+  } else if (n === 2) {
+    // Mark setup complete
+    const res = await post({complete: true});
+    if (!res.ok) { showErr(err, res.errors); return; }
+    showStep(3);
+    setTimeout(() => { window.location.href = '/'; }, 1800);
+    return;
+  }
+  showStep(n + 1);
+}
+
+function showErr(el, errors) {
+  el.textContent = Array.isArray(errors) ? errors.join(' · ') : (errors || 'Unknown error');
+  el.className = 'err show';
+}
+
+async function post(body) {
+  try {
+    const r = await fetch('/setup', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)
+    });
+    const d = await r.json();
+    return {ok: r.ok, ...d};
+  } catch(e) {
+    return {ok: false, errors: ['Network error']};
+  }
+}
+
+async function testLEDs() {
+  const btn = document.getElementById('test-btn');
+  const ok  = document.getElementById('led-ok');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin" style="display:inline-block;vertical-align:middle;margin-right:6px"></span> Flashing...';
+  try {
+    await fetch('/api/test-led', {method:'POST'});
+    ok.className = 'ok-box show';
+  } catch(e) {}
+  btn.disabled = false;
+  btn.innerHTML = '&#9889; Flash Again';
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+renderStrips();
+// Pre-fill detection settings from existing config
+if (cfg.confidence_threshold) {
+  document.getElementById('confidence_threshold').value = cfg.confidence_threshold;
+  document.getElementById('ctv').textContent = parseFloat(cfg.confidence_threshold).toFixed(2);
+}
+if (cfg.smoothing) {
+  document.getElementById('smoothing').value = cfg.smoothing;
+  document.getElementById('smv').textContent = parseFloat(cfg.smoothing).toFixed(2);
+}
+</script>
+</body>
+</html>

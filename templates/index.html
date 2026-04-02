@@ -149,7 +149,7 @@ body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;height:1
 <!-- SLEEP OVERLAY -->
 <div id="sleep-overlay" onclick="wakeUp()">
   <div class="sleep-time" id="sleep-clock">--:--</div>
-  <div class="sleep-txt">לחץ להמשיך · Click to wake</div>
+  <div class="sleep-txt">Click to wake</div>
 </div>
 
 <div class="header">
@@ -349,7 +349,7 @@ function tickSleepClock() {
   if (document.getElementById('sleep-overlay').style.display === 'none') return;
   const now = new Date();
   document.getElementById('sleep-clock').textContent =
-    now.toLocaleTimeString('he-IL', {hour:'2-digit', minute:'2-digit'});
+    now.toLocaleTimeString(undefined, {hour:'2-digit', minute:'2-digit'});
   setTimeout(tickSleepClock, 10000);
 }
 ['mousemove','mousedown','touchstart','keydown','click'].forEach(e =>
@@ -578,7 +578,26 @@ function V(id, v, suf) {
 function S(k, v) {
   cfg[k] = v;
   fetch('/api/config', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({[k]: v})}).catch(() => {});
+    body: JSON.stringify({[k]: v})})
+    .then(r => r.json().then(d => ({ok: r.ok, data: d})))
+    .then(({ok, data}) => { if (!ok) showToast((data.errors || ['Config error']).join(' · ')); })
+    .catch(() => {});
+}
+let _toastTimer = null;
+function showToast(msg) {
+  let t = document.getElementById('cfg-toast');
+  if (!t) {
+    t = document.createElement('div');
+    t.id = 'cfg-toast';
+    t.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);' +
+      'background:#da363322;border:1px solid #da3633;border-radius:6px;padding:8px 16px;' +
+      'font-size:11px;color:#f85149;z-index:9998;font-family:monospace;white-space:nowrap;' +
+      'pointer-events:none;transition:opacity .3s';
+    document.body.appendChild(t);
+  }
+  t.textContent = msg; t.style.opacity = '1';
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { t.style.opacity = '0'; }, 3500);
 }
 function syncAlvMax(n) {
   const el = document.getElementById('active_leds_count');

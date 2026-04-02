@@ -1,0 +1,26 @@
+[Unit]
+Description=Human Detect LED Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/babilnur/human_detect_led
+ExecStart=/usr/bin/python3 /home/babilnur/human_detect_led/run.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=human-detect-led
+
+# rpi_ws281x requires root for DMA/PWM hardware access (/dev/mem).
+# SupplementaryGroups ensures camera and GPIO access even as root.
+SupplementaryGroups=gpio video
+
+# Environment (set LED_PASSWORD here to enable auth)
+# Environment=LED_PASSWORD=your_password_here
+# Environment=LED_SECRET_KEY=a_random_secret_key
+
+[Install]
+WantedBy=multi-user.target
