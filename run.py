@@ -855,7 +855,7 @@ def get_status():
         'strips':         strips_status,
         'remote':         get_remote(),
         'temp_c':         temp_c,
-        'auth_enabled':   _AUTH_ENABLED,
+        'auth_enabled':   _passwd_set(),
     })
 
 @app.route('/api/remote', methods=['POST'])
