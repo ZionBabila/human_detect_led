@@ -37,6 +37,7 @@ DEFAULT = {
     'active_color': '#ff6b6b', 'idle_color': '#1a1a2e',
     'confidence_threshold': 0.3, 'gpio_pin': 18, 'remote_btn_pin': 17,
     'flip_h': True, 'flip_v': False,
+    'cam1_index': -1,
     'cam2_index': -1, 'cam2_flip_h': False, 'cam2_flip_v': False,
     'cam2_side': 'right', 'cam2_aspect': 'fit',
     'strips': [{'gpio_pin': 18, 'led_count': 50, 'enabled': True,
@@ -88,13 +89,14 @@ def _validate_cfg(updates: dict):
         if v in ('fit', 'native'): clean['cam2_aspect'] = v
         else: errors.append("cam2_aspect must be 'fit' or 'native'")
 
-    if 'cam2_index' in updates:
+    for k in ('cam1_index', 'cam2_index'):
+        if k not in updates: continue
         try:
-            v = int(updates['cam2_index'])
-            if -1 <= v <= 9: clean['cam2_index'] = v
-            else: errors.append('cam2_index must be -1 (off) or 0-9')
+            v = int(updates[k])
+            if -1 <= v <= 9: clean[k] = v
+            else: errors.append(f'{k} must be -1 (auto/off) or 0-9')
         except (ValueError, TypeError):
-            errors.append('cam2_index: must be integer')
+            errors.append(f'{k}: must be integer')
 
     if 'led_spread_mode' in updates:
         v = str(updates['led_spread_mode'])
@@ -376,7 +378,7 @@ except Exception as e:
 
 hog = cv2.HOGDescriptor()
 hog.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
-mog = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=25, detectShadows=False)
+mog = cv2.createBackgroundSubtractorMOG2(history=30, varThreshold=25, detectShadows=False)
 _k_open   = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5,  5))
 _k_close  = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
 _k_dilate = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (20, 20))
@@ -570,27 +572,60 @@ def hog_worker():
             if best: _hog_ts = time.time()
         time.sleep(0.25)
 
+# ── camera helpers ────────────────────────────────────────────────────────────
+def _cam_device_name(index: int) -> str:
+    """Return human-readable name for /dev/videoN, or empty string."""
+    try:
+        with open(f'/sys/class/video4linux/video{index}/name') as f:
+            return f.read().strip()
+    except Exception:
+        return ''
+
+def _open_verified_camera(path_or_int) -> 'cv2.VideoCapture | None':
+    """Open a camera and verify it can deliver a real frame. Returns cap or None."""
+    try:
+        c = cv2.VideoCapture(path_or_int, cv2.CAP_V4L2)
+        if not c.isOpened():
+            c.release(); return None
+        # Try up to 5 reads — metadata nodes return False immediately
+        for _ in range(5):
+            ret, _ = c.read()
+            if ret:
+                return c
+        c.release()
+        return None
+    except Exception:
+        return None
+
 # ── camera thread with reconnect ──────────────────────────────────────────────
-_CAM_INDICES = ['/dev/video0', '/dev/video1', 0, 4, 2, 1]
+# Only even-numbered video nodes are capture nodes on most USB cameras
+_CAM_PATHS = [f'/dev/video{i}' for i in range(0, 10, 2)]
 
 def cam_worker():
     global latest_raw, is_running, _cam1_dev
     backoff = 1
     while is_running:
-        # Build exclusion set from cam2 so cam1 never grabs the same device
         _cfg0 = load_cfg()
         _c2i  = int(_cfg0.get('cam2_index', -1))
+        _c1i  = int(_cfg0.get('cam1_index', -1))
+        # Exclude cam2's device path and index
         _skip = {_c2i, f'/dev/video{_c2i}'} if _c2i >= 0 else set()
         cam = None
-        for idx in _CAM_INDICES:
-            if idx in _skip: continue
-            try:
-                c = cv2.VideoCapture(idx, cv2.CAP_V4L2)
-                if c.isOpened(): cam = c; _cam1_dev = idx; log.info("Camera: %s", idx); break
-                c.release()
-            except Exception: pass
+        if _c1i >= 0:
+            # User pinned cam1 — use that device directly
+            path = f'/dev/video{_c1i}'
+            cam = _open_verified_camera(path)
+            if cam: _cam1_dev = _c1i; log.info("Camera1: pinned to %s", path)
+            else: log.warning("Camera1: pinned index %d not available, retrying in %ds", _c1i, backoff)
+        else:
+            # Auto-detect: try capture nodes, skip whichever cam2 is using
+            for path in _CAM_PATHS:
+                idx = int(path.replace('/dev/video', ''))
+                if idx in _skip or path in _skip: continue
+                cam = _open_verified_camera(path)
+                if cam: _cam1_dev = idx; log.info("Camera1: auto-detected %s (%s)", path, _cam_device_name(idx)); break
         if cam is None:
-            log.warning("Camera: no device found, retrying in %ds", backoff)
+            log.warning("Camera1: no device found, retrying in %ds", backoff)
             time.sleep(backoff); backoff = min(backoff * 2, 30); continue
         backoff = 1
         cam.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
@@ -626,23 +661,22 @@ def cam2_worker():
             with raw2_lock: latest_raw2 = None
             _cam2_active = False
             time.sleep(2); continue
-        cam = None
-        try:
-            c = cv2.VideoCapture(idx, cv2.CAP_V4L2)
-            if c.isOpened(): cam = c; log.info("Camera2: device %d", idx)
-            else: c.release()
-        except Exception: pass
+        path = f'/dev/video{idx}'
+        cam = _open_verified_camera(path)
         if cam is None:
-            log.warning("Camera2: index %d not found, retrying in 5s", idx)
+            log.warning("Camera2: %s not a working capture device, retrying in 5s", path)
             with raw2_lock: latest_raw2 = None
             _cam2_active = False
             time.sleep(5); continue
+        log.info("Camera2: opened %s (%s)", path, _cam_device_name(idx))
         cam.set(cv2.CAP_PROP_FRAME_WIDTH,  640)
         cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
         cam.set(cv2.CAP_PROP_BUFFERSIZE,   1)
         cam.set(cv2.CAP_PROP_FPS,          30)
         fails = 0; last_idx = idx; cfg_tick = 0
         fh = False; fv = False
+        _last_frame_t = 0.0
+        _frame_gap = 1.0 / 15  # cap cam2 at 15fps to reduce CPU/swap load
         while is_running:
             # Re-read config only every 30 frames instead of every frame
             if cfg_tick % 30 == 0:
@@ -658,6 +692,11 @@ def cam2_worker():
                 if fails > 30: log.warning("Camera2: too many failures, reconnecting"); break
                 time.sleep(0.03); continue
             fails = 0
+            # Throttle cam2 to 15fps to keep CPU/swap load manageable
+            now = time.time()
+            if now - _last_frame_t < _frame_gap:
+                continue
+            _last_frame_t = now
             if fh and fv:  frame = cv2.flip(frame, -1)
             elif fh:       frame = cv2.flip(frame,  1)
             elif fv:       frame = cv2.flip(frame,  0)
@@ -671,13 +710,17 @@ def cam2_worker():
 # ── detect thread ─────────────────────────────────────────────────────────────
 def detect_worker():
     global current_frame, is_running
+    _cfg_cache_d = None; _cfg_tick_d = 0
     while is_running:
         if not _new_frame.wait(timeout=0.5): continue
         _new_frame.clear()
         with raw_lock: frame = latest_raw
         if frame is None: continue
         try:
-            cfg = load_cfg()
+            _cfg_tick_d += 1
+            if _cfg_cache_d is None or _cfg_tick_d % 30 == 0:
+                _cfg_cache_d = load_cfg()
+            cfg = _cfg_cache_d
             with raw2_lock: frame2 = latest_raw2
             if frame2 is not None:
                 h, w = frame.shape[:2]
@@ -898,6 +941,7 @@ def get_status():
         'version':        APP_VERSION,
         'uptime_s':       uptime,
         'camera_active':  current_frame is not None,
+        'cam1_dev':       _cam1_dev,
         'cam2_active':    _cam2_active,
         'use_yolo':       USE_YOLO,
         'led_available':  LED_AVAILABLE,
@@ -955,23 +999,21 @@ def test_led_route():
 @app.route('/api/scan-cameras')
 @require_login
 def scan_cameras():
+    """Scan /dev/video0..9 (even nodes = capture). Verify each can deliver a frame."""
     found = []
-    for i in range(8):
-        try:
-            c = cv2.VideoCapture(i, cv2.CAP_V4L2)
-            if c.isOpened():
-                found.append(i)
-            c.release()
-        except Exception:
-            pass
-    # Resolve cam1's integer index so the UI can exclude it
+    for i in range(0, 10, 2):  # even nodes only — odd are metadata on USB cams
+        path = f'/dev/video{i}'
+        cam = _open_verified_camera(path)
+        if cam is None: continue
+        cam.release()
+        name = _cam_device_name(i) or f'Camera {i}'
+        found.append({'index': i, 'name': name})
+    # Resolve active cam1 index
     cam1_int = None
     if _cam1_dev is not None:
-        if isinstance(_cam1_dev, int):
-            cam1_int = _cam1_dev
-        elif isinstance(_cam1_dev, str):
-            import re as _re
-            m = _re.match(r'/dev/video(\d+)', _cam1_dev)
+        cam1_int = _cam1_dev if isinstance(_cam1_dev, int) else None
+        if cam1_int is None:
+            m = re.match(r'/dev/video(\d+)', str(_cam1_dev))
             if m: cam1_int = int(m.group(1))
     return jsonify({'cameras': found, 'cam1': cam1_int})
 

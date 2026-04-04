@@ -295,9 +295,27 @@ body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;height:1
     </div>
 
     <div class="panel">
-      <div class="pt">Camera 2 — Wide View</div>
+      <div class="pt">Cameras</div>
 
-      <!-- Status row -->
+      <!-- Main camera (cam1) selector -->
+      <div style="margin-bottom:10px">
+        <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Main Camera</div>
+        <div class="sr" style="margin-bottom:6px">
+          <span class="sl">Active</span>
+          <span class="sv son" id="cam1-status">auto-detect</span>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+          <button class="btn bd" style="font-size:9px;padding:4px 10px" onclick="scanCameras(event)">Scan Cameras</button>
+        </div>
+        <div id="scan-result" style="font-size:9px;margin-bottom:6px;display:none"></div>
+        <!-- Camera pick buttons populated by scan -->
+        <div id="cam-pick-list" style="display:none"></div>
+      </div>
+
+      <hr style="border:none;border-top:1px solid #21262d;margin:8px 0">
+
+      <!-- Cam 2 status + add/remove -->
+      <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Second Camera</div>
       <div class="sr" style="margin-bottom:8px">
         <span class="sl">Status</span>
         <span class="sv sof" id="cam2-status">off</span>
@@ -305,11 +323,11 @@ body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;height:1
 
       <!-- Add / Remove -->
       <div id="cam2-add-row" style="display:block">
-        <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Device Index</div>
         <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
-          <input type="number" id="cam2-index-input" min="0" max="9" value="1"
-            style="width:52px;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:4px;padding:4px 6px;font-size:12px">
-          <button class="btn bd" style="font-size:9px;padding:4px 8px" onclick="scanCameras()">Scan</button>
+          <input type="number" id="cam2-index-input" min="0" max="9" value="2"
+            style="width:52px;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:4px;padding:4px 6px;font-size:12px"
+            placeholder="idx">
+          <span style="font-size:9px;color:#6e7681">device index</span>
         </div>
         <div id="cam2-scan-result" style="font-size:9px;color:#3fb950;margin-bottom:6px;display:none"></div>
         <button class="btn bb2" style="width:100%;font-size:10px;padding:5px" onclick="addCam2()">+ Add Camera 2</button>
@@ -598,6 +616,15 @@ function pollStatus() {
     const el = document.getElementById('s-cam');
     el.textContent = d.camera_active ? 'active' : 'offline';
     el.className   = 'sv ' + (d.camera_active ? 'son' : 'sof');
+    const c1st = document.getElementById('cam1-status');
+    if (c1st) {
+      const c1dev = d.cam1_dev;
+      if (d.camera_active && c1dev !== undefined && c1dev !== null) {
+        c1st.textContent = 'index ' + c1dev; c1st.className = 'sv son';
+      } else if (!d.camera_active) {
+        c1st.textContent = 'connecting…'; c1st.className = 'sv';
+      }
+    }
     if (typeof d.stream_enabled !== 'undefined') { streamEnabled = d.stream_enabled; refreshStreamUI(); }
     const c2st = document.getElementById('cam2-status');
     if (c2st) {
@@ -733,25 +760,53 @@ function setCam2Aspect(aspect) {
   document.getElementById('cam2-asp-fit').className    = aspect === 'fit'    ? 'active' : '';
   document.getElementById('cam2-asp-native').className = aspect === 'native' ? 'active' : '';
 }
-function scanCameras() {
-  const btn = event.target; btn.disabled = true; btn.textContent = '…';
-  const res = document.getElementById('cam2-scan-result');
+function scanCameras(ev) {
+  const btn = ev ? ev.target : event.target;
+  btn.disabled = true; btn.textContent = '…';
+  const res     = document.getElementById('scan-result');
+  const pickList = document.getElementById('cam-pick-list');
   fetch('/api/scan-cameras').then(r => r.json()).then(d => {
-    btn.disabled = false; btn.textContent = 'Scan';
+    btn.disabled = false; btn.textContent = 'Scan Cameras';
     if (!d.cameras || d.cameras.length === 0) {
       res.style.display = 'block'; res.style.color = '#f85149';
-      res.textContent = 'No cameras found'; return;
+      res.textContent = 'No cameras found'; pickList.style.display = 'none'; return;
     }
-    res.style.display = 'block'; res.style.color = '#3fb950';
-    res.textContent = 'Found: ' + d.cameras.map(i => 'index ' + i).join(', ');
-    // Auto-fill input with best cam2 candidate (first index that isn't cam1's)
+    res.style.display = 'block'; res.style.color = '#8b949e';
+    res.textContent = 'Found ' + d.cameras.length + ' camera(s) — pick roles:';
+    // Build pick buttons for each camera
+    pickList.style.display = 'block';
+    pickList.innerHTML = d.cameras.map(cam => {
+      const isCam1 = d.cam1 === cam.index;
+      const isCam2 = cfg.cam2_index === cam.index;
+      return `<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;font-size:9px">
+        <span style="flex:1;color:#e6edf3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+          title="/dev/video${cam.index}">${cam.name}</span>
+        <button class="btn ${isCam1 ? 'bb2' : 'bd'}" style="font-size:8px;padding:3px 6px;white-space:nowrap"
+          onclick="setCam1(${cam.index})">Cam1${isCam1 ? ' ✓' : ''}</button>
+        <button class="btn ${isCam2 ? 'bb2' : 'bd'}" style="font-size:8px;padding:3px 6px;white-space:nowrap"
+          onclick="setCam2FromScan(${cam.index})">Cam2${isCam2 ? ' ✓' : ''}</button>
+      </div>`;
+    }).join('');
+    // Auto-fill cam2 input with best candidate (not cam1)
     const inp = document.getElementById('cam2-index-input');
     if (inp) {
-      const cam1idx = d.cam1 !== undefined ? d.cam1 : 0;
-      const candidate = d.cameras.find(i => i !== cam1idx);
-      if (candidate !== undefined) inp.value = candidate;
+      const candidate = d.cameras.find(c => c.index !== d.cam1);
+      if (candidate !== undefined) inp.value = candidate.index;
     }
-  }).catch(() => { btn.disabled = false; btn.textContent = 'Scan'; });
+  }).catch(() => { btn.disabled = false; btn.textContent = 'Scan Cameras'; });
+}
+function setCam1(idx) {
+  cfg.cam1_index = idx;
+  S('cam1_index', idx);
+  const st = document.getElementById('cam1-status');
+  if (st) { st.textContent = 'index ' + idx + ' (reconnecting…)'; st.className = 'sv'; }
+  // Re-render pick list to update checkmarks
+  setTimeout(() => document.querySelector('#cam-pick-list') && scanCameras({target: document.querySelector('[onclick*="scanCameras"]')}), 1500);
+}
+function setCam2FromScan(idx) {
+  const inp = document.getElementById('cam2-index-input');
+  if (inp) inp.value = idx;
+  addCam2();
 }
 function setCam2Side(side) {
   cfg.cam2_side = side;
