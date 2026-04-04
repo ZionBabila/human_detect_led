@@ -744,6 +744,13 @@ function scanCameras() {
     }
     res.style.display = 'block'; res.style.color = '#3fb950';
     res.textContent = 'Found: ' + d.cameras.map(i => 'index ' + i).join(', ');
+    // Auto-fill input with best cam2 candidate (first index that isn't cam1's)
+    const inp = document.getElementById('cam2-index-input');
+    if (inp) {
+      const cam1idx = d.cam1 !== undefined ? d.cam1 : 0;
+      const candidate = d.cameras.find(i => i !== cam1idx);
+      if (candidate !== undefined) inp.value = candidate;
+    }
   }).catch(() => { btn.disabled = false; btn.textContent = 'Scan'; });
 }
 function setCam2Side(side) {

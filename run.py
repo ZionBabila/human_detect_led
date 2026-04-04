@@ -37,7 +37,8 @@ DEFAULT = {
     'active_color': '#ff6b6b', 'idle_color': '#1a1a2e',
     'confidence_threshold': 0.3, 'gpio_pin': 18, 'remote_btn_pin': 17,
     'flip_h': True, 'flip_v': False,
-    'cam2_index': -1, 'cam2_flip_h': False, 'cam2_flip_v': False, 'cam2_side': 'right',
+    'cam2_index': -1, 'cam2_flip_h': False, 'cam2_flip_v': False,
+    'cam2_side': 'right', 'cam2_aspect': 'fit',
     'strips': [{'gpio_pin': 18, 'led_count': 50, 'enabled': True,
                 'label': 'Strip 1', 'color': '#ff6b6b'}]
 }
@@ -81,6 +82,11 @@ def _validate_cfg(updates: dict):
         v = str(updates['cam2_side'])
         if v in ('left', 'right'): clean['cam2_side'] = v
         else: errors.append("cam2_side must be 'left' or 'right'")
+
+    if 'cam2_aspect' in updates:
+        v = str(updates['cam2_aspect'])
+        if v in ('fit', 'native'): clean['cam2_aspect'] = v
+        else: errors.append("cam2_aspect must be 'fit' or 'native'")
 
     if 'cam2_index' in updates:
         try:
@@ -160,13 +166,13 @@ def load_cfg():
     return _cfg_cache
 
 def save_cfg(c: dict):
-    """Atomic config save: write to temp then rename (POSIX atomic)."""
+    """Atomic config save protected by lock to prevent concurrent-write race."""
     global _cfg_cache, _cfg_mtime
-    tmp = CONFIG_FILE + '.tmp'
-    with open(tmp, 'w') as f:
-        json.dump(c, f, indent=2)
-    os.replace(tmp, CONFIG_FILE)
     with _cfg_lock:
+        tmp = CONFIG_FILE + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(c, f, indent=2)
+        os.replace(tmp, CONFIG_FILE)
         _cfg_cache = c.copy()
         try: _cfg_mtime = os.path.getmtime(CONFIG_FILE)
         except Exception: pass
@@ -386,6 +392,7 @@ current_frame = None
 latest_raw    = None
 latest_raw2   = None   # second camera; None = not active
 _cam2_active  = False  # True when cam2_worker is capturing frames
+_cam1_dev     = None   # device index/path cam_worker successfully opened
 
 detection_state = {
     "detected": False, "bbox": None, "active_leds": [],
@@ -567,7 +574,7 @@ def hog_worker():
 _CAM_INDICES = ['/dev/video0', '/dev/video1', 0, 4, 2, 1]
 
 def cam_worker():
-    global latest_raw, is_running
+    global latest_raw, is_running, _cam1_dev
     backoff = 1
     while is_running:
         # Build exclusion set from cam2 so cam1 never grabs the same device
@@ -579,7 +586,7 @@ def cam_worker():
             if idx in _skip: continue
             try:
                 c = cv2.VideoCapture(idx, cv2.CAP_V4L2)
-                if c.isOpened(): cam = c; log.info("Camera: %s", idx); break
+                if c.isOpened(): cam = c; _cam1_dev = idx; log.info("Camera: %s", idx); break
                 c.release()
             except Exception: pass
         if cam is None:
@@ -674,15 +681,29 @@ def detect_worker():
             with raw2_lock: frame2 = latest_raw2
             if frame2 is not None:
                 h, w = frame.shape[:2]
-                # Scale both cameras to half width so stitched frame = original size
                 half_w = w // 2
-                f1 = cv2.resize(frame,  (half_w, h))
-                f2 = cv2.resize(frame2, (half_w, h))
-                if cfg.get('cam2_side', 'right') == 'left':
-                    frame = np.hstack([f2, f1])
+                aspect = cfg.get('cam2_aspect', 'fit')
+                if aspect == 'native':
+                    # Maintain each camera's aspect ratio, scale to half_w wide
+                    h1n = int(half_w * frame.shape[0]  / frame.shape[1])
+                    h2n = int(half_w * frame2.shape[0] / frame2.shape[1])
+                    tgt_h = max(h1n, h2n)
+                    f1 = cv2.resize(frame,  (half_w, h1n))
+                    f2 = cv2.resize(frame2, (half_w, h2n))
+                    # Pad shorter one to same height
+                    if h1n < tgt_h: f1 = cv2.copyMakeBorder(f1, 0, tgt_h-h1n, 0, 0, cv2.BORDER_CONSTANT)
+                    if h2n < tgt_h: f2 = cv2.copyMakeBorder(f2, 0, tgt_h-h2n, 0, 0, cv2.BORDER_CONSTANT)
                 else:
-                    frame = np.hstack([f1, f2])
-            run_detection(frame.copy(), cfg)
+                    # Fit: fill the frame, slight distortion
+                    f1 = cv2.resize(frame,  (half_w, h))
+                    f2 = cv2.resize(frame2, (half_w, h))
+                stitched = np.hstack([f2, f1] if cfg.get('cam2_side', 'right') == 'left' else [f1, f2])
+                # Downscale for detection to keep same CPU load as single camera
+                detect_frame = cv2.resize(stitched, (w, h)) if stitched.shape[:2] != (h, w) else stitched
+                frame = stitched
+            else:
+                detect_frame = frame
+            run_detection(detect_frame, cfg)
             out = frame.copy()
             with det_lock: st = detection_state.copy()
             if st['detected'] and st['bbox']:
@@ -726,7 +747,24 @@ def _check_login(pw: str) -> bool:
     return False
 
 # ── Flask + auth ──────────────────────────────────────────────────────────────
-_SECRET_KEY = os.environ.get('LED_SECRET_KEY', secrets.token_hex(32))
+def _load_secret_key():
+    env = os.environ.get('LED_SECRET_KEY')
+    if env:
+        return env
+    key_file = os.path.join(BASE_DIR, '.secret_key')
+    try:
+        with open(key_file) as f:
+            k = f.read().strip()
+        if k:
+            return k
+    except FileNotFoundError:
+        pass
+    k = secrets.token_hex(32)
+    with open(key_file, 'w') as f:
+        f.write(k)
+    return k
+
+_SECRET_KEY = _load_secret_key()
 
 app = Flask(__name__,
             template_folder=os.path.join(BASE_DIR, 'templates'),
@@ -865,6 +903,7 @@ def get_status():
         'led_available':  LED_AVAILABLE,
         'strips':         strips_status,
         'remote':         get_remote(),
+        'stream_enabled': get_remote(),
         'temp_c':         temp_c,
         'auth_enabled':   _passwd_set(),
     })
@@ -925,7 +964,16 @@ def scan_cameras():
             c.release()
         except Exception:
             pass
-    return jsonify({'cameras': found})
+    # Resolve cam1's integer index so the UI can exclude it
+    cam1_int = None
+    if _cam1_dev is not None:
+        if isinstance(_cam1_dev, int):
+            cam1_int = _cam1_dev
+        elif isinstance(_cam1_dev, str):
+            import re as _re
+            m = _re.match(r'/dev/video(\d+)', _cam1_dev)
+            if m: cam1_int = int(m.group(1))
+    return jsonify({'cameras': found, 'cam1': cam1_int})
 
 @app.route('/api/thermal')
 @require_login

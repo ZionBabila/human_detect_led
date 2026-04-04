@@ -3,27 +3,27 @@
   "smoothing": 0.3,
   "detection_threshold": 74,
   "led_count": 32,
-  "active_color": "#00eeff",
+  "active_color": "#ff6b6b",
   "idle_color": "#000000",
   "confidence_threshold": 0.3,
   "gpio_pin": 18,
   "strips": [
     {
-      "color": "#092a13",
-      "enabled": true,
       "gpio_pin": 18,
+      "led_count": 32,
+      "enabled": true,
       "label": "Strip 1",
-      "led_count": 32
-    },
-    {
-      "color": "#58a6ff",
-      "enabled": false,
-      "gpio_pin": 12,
-      "label": "Strip 2",
-      "led_count": 50
+      "color": "#0df853"
     }
   ],
   "active_leds_count": 15,
   "led_spread_mode": "proportional",
-  "remote_btn_pin": 17
+  "remote_btn_pin": 17,
+  "flip_h": true,
+  "flip_v": false,
+  "cam2_index": -1,
+  "cam2_flip_h": false,
+  "cam2_flip_v": false,
+  "cam2_side": "right",
+  "cam2_aspect": "native"
 }
