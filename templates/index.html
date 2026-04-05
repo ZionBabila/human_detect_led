@@ -164,7 +164,12 @@ body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;height:1
 <div class="layout">
   <div class="main">
     <div class="cam-area">
-      <img id="videoFeed" id="feed" src="/video_feed" alt="feed"><div id="streamPlaceholder" style="display:none;position:absolute;inset:0;background:#111;align-items:center;justify-content:center;flex-direction:column;color:#555;font-size:1.1rem;gap:10px"><div style="font-size:2.5rem">OFF</div><div>Camera stream paused</div><div style="font-size:0.8rem;color:#444">Detection + LEDs still active</div></div>
+      <img id="videoFeed" id="feed" src="/video_feed" alt="feed">
+      <img id="cam2-pip" src="" alt="cam2"
+        style="display:none;position:absolute;bottom:30px;right:8px;width:200px;height:150px;
+               border:2px solid #30363d;border-radius:5px;object-fit:cover;background:#000;
+               box-shadow:0 4px 16px rgba(0,0,0,.6)">
+      <div id="streamPlaceholder" style="display:none;position:absolute;inset:0;background:#111;align-items:center;justify-content:center;flex-direction:column;color:#555;font-size:1.1rem;gap:10px"><div style="font-size:2.5rem">OFF</div><div>Camera stream paused</div><div style="font-size:0.8rem;color:#444">Detection + LEDs still active</div></div>
       <div class="hud-tl">
         <div class="pill" id="det-pill" style="color:#6e7681">Waiting...</div>
         <div class="pill" id="conf-pill" style="color:#6e7681">Conf: --</div>
@@ -296,66 +301,8 @@ body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;height:1
 
     <div class="panel">
       <div class="pt">Cameras</div>
-
-      <!-- Main camera (cam1) selector -->
-      <div style="margin-bottom:10px">
-        <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Main Camera</div>
-        <div class="sr" style="margin-bottom:6px">
-          <span class="sl">Active</span>
-          <span class="sv son" id="cam1-status">auto-detect</span>
-        </div>
-        <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
-          <button class="btn bd" style="font-size:9px;padding:4px 10px" onclick="scanCameras(event)">Scan Cameras</button>
-        </div>
-        <div id="scan-result" style="font-size:9px;margin-bottom:6px;display:none"></div>
-        <!-- Camera pick buttons populated by scan -->
-        <div id="cam-pick-list" style="display:none"></div>
-      </div>
-
-      <hr style="border:none;border-top:1px solid #21262d;margin:8px 0">
-
-      <!-- Cam 2 status + add/remove -->
-      <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Second Camera</div>
-      <div class="sr" style="margin-bottom:8px">
-        <span class="sl">Status</span>
-        <span class="sv sof" id="cam2-status">off</span>
-      </div>
-
-      <!-- Add / Remove -->
-      <div id="cam2-add-row" style="display:block">
-        <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
-          <input type="number" id="cam2-index-input" min="0" max="9" value="2"
-            style="width:52px;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:4px;padding:4px 6px;font-size:12px"
-            placeholder="idx">
-          <span style="font-size:9px;color:#6e7681">device index</span>
-        </div>
-        <div id="cam2-scan-result" style="font-size:9px;color:#3fb950;margin-bottom:6px;display:none"></div>
-        <button class="btn bb2" style="width:100%;font-size:10px;padding:5px" onclick="addCam2()">+ Add Camera 2</button>
-      </div>
-
-      <!-- Settings (shown when cam2 active) -->
-      <div id="cam2-settings-row" style="display:none">
-        <div style="margin-bottom:8px">
-          <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Position</div>
-          <div class="mode-toggle" style="height:26px">
-            <button id="cam2-side-left"  onclick="setCam2Side('left')">◀ Left</button>
-            <button id="cam2-side-right" onclick="setCam2Side('right')" class="active">Right ▶</button>
-          </div>
-        </div>
-        <div style="margin-bottom:8px">
-          <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Aspect Ratio</div>
-          <div class="mode-toggle" style="height:26px">
-            <button id="cam2-asp-fit"    onclick="setCam2Aspect('fit')" class="active">Fit</button>
-            <button id="cam2-asp-native" onclick="setCam2Aspect('native')">Native</button>
-          </div>
-          <div style="font-size:9px;color:#6e7681;margin-top:3px">Native = no distortion, Fit = fills frame</div>
-        </div>
-        <div style="display:flex;gap:6px;margin-bottom:8px">
-          <button class="btn bd" id="cam2-fh-btn" style="flex:1;font-size:9px;padding:4px" onclick="toggleCam2Flip('cam2_flip_h')">Flip H</button>
-          <button class="btn bd" id="cam2-fv-btn" style="flex:1;font-size:9px;padding:4px" onclick="toggleCam2Flip('cam2_flip_v')">Flip V</button>
-        </div>
-        <button class="btn bd" style="width:100%;font-size:10px;padding:5px;color:#f85149;border-color:#da3633" onclick="removeCam2()">✕ Remove Camera 2</button>
-      </div>
+      <div id="cam-list" style="margin-bottom:8px"></div>
+      <button class="add-strip" id="add-cam-btn" onclick="openAddCamModal()">+ Add Camera</button>
     </div>
 
     <div class="panel">
@@ -616,32 +563,12 @@ function pollStatus() {
     const el = document.getElementById('s-cam');
     el.textContent = d.camera_active ? 'active' : 'offline';
     el.className   = 'sv ' + (d.camera_active ? 'son' : 'sof');
-    const c1st = document.getElementById('cam1-status');
-    if (c1st) {
-      const c1dev = d.cam1_dev;
-      if (d.camera_active && c1dev !== undefined && c1dev !== null) {
-        c1st.textContent = 'index ' + c1dev; c1st.className = 'sv son';
-      } else if (!d.camera_active) {
-        c1st.textContent = 'connecting…'; c1st.className = 'sv';
-      }
-    }
     if (typeof d.stream_enabled !== 'undefined') { streamEnabled = d.stream_enabled; refreshStreamUI(); }
-    const c2st = document.getElementById('cam2-status');
-    if (c2st) {
-      const idx = cfg.cam2_index !== undefined ? cfg.cam2_index : -1;
-      const addRow      = document.getElementById('cam2-add-row');
-      const settingsRow = document.getElementById('cam2-settings-row');
-      if (idx < 0) {
-        c2st.textContent = 'off'; c2st.className = 'sv sof';
-        if (addRow)      addRow.style.display      = 'block';
-        if (settingsRow) settingsRow.style.display = 'none';
-      } else {
-        if (addRow)      addRow.style.display      = 'none';
-        if (settingsRow) settingsRow.style.display = 'block';
-        if (d.cam2_active) { c2st.textContent = 'active (index ' + idx + ')'; c2st.className = 'sv son'; }
-        else               { c2st.textContent = 'connecting…';                c2st.className = 'sv'; }
-      }
-    }
+    // Update camera status dots in cam-list cards
+    const dot1 = document.getElementById('cam1-dot');
+    if (dot1) { dot1.textContent = d.camera_active ? 'active' : '…'; dot1.style.color = d.camera_active ? '#3fb950' : '#6e7681'; }
+    const dot2 = document.getElementById('cam2-dot');
+    if (dot2) { dot2.textContent = d.cam2_active ? 'active' : 'off'; dot2.style.color = d.cam2_active ? '#3fb950' : '#6e7681'; }
   }).catch(() => {});
 }
 
@@ -734,117 +661,187 @@ function resetCfg() {
       flip_h:true, flip_v:false})})
     .then(() => location.reload());
 }
-// ── Camera 2 ──────────────────────────────────────────────────────────────────
-function addCam2() {
-  const inp = document.getElementById('cam2-index-input');
-  const idx = parseInt(inp ? inp.value : 1);
-  if (isNaN(idx) || idx < 0 || idx > 9) { alert('Enter a camera index 0-9'); return; }
-  cfg.cam2_index = idx;
-  S('cam2_index', idx);
-  const st = document.getElementById('cam2-status');
-  if (st) { st.textContent = 'connecting…'; st.className = 'sv'; }
-  document.getElementById('cam2-add-row').style.display = 'none';
-  document.getElementById('cam2-settings-row').style.display = 'block';
+// ── Camera Manager ────────────────────────────────────────────────────────────
+function openAddCamModal() {
+  document.getElementById('add-cam-modal').style.display = 'flex';
+  document.getElementById('scan-modal-list').innerHTML = '';
+  const btn = document.getElementById('scan-modal-btn');
+  btn.textContent = 'Scan Cameras'; btn.disabled = false;
 }
-function removeCam2() {
-  cfg.cam2_index = -1;
-  S('cam2_index', -1);
-  const st = document.getElementById('cam2-status');
-  if (st) { st.textContent = 'off'; st.className = 'sv sof'; }
-  document.getElementById('cam2-add-row').style.display = 'block';
-  document.getElementById('cam2-settings-row').style.display = 'none';
+function closeAddCamModal() {
+  document.getElementById('add-cam-modal').style.display = 'none';
 }
-function setCam2Aspect(aspect) {
-  cfg.cam2_aspect = aspect;
-  S('cam2_aspect', aspect);
-  document.getElementById('cam2-asp-fit').className    = aspect === 'fit'    ? 'active' : '';
-  document.getElementById('cam2-asp-native').className = aspect === 'native' ? 'active' : '';
-}
-function scanCameras(ev) {
-  const btn = ev ? ev.target : event.target;
-  btn.disabled = true; btn.textContent = '…';
-  const res     = document.getElementById('scan-result');
-  const pickList = document.getElementById('cam-pick-list');
+function doScanCameras() {
+  const btn  = document.getElementById('scan-modal-btn');
+  const list = document.getElementById('scan-modal-list');
+  btn.disabled = true; btn.textContent = 'Scanning…';
+  list.innerHTML = '<div style="font-size:10px;color:#6e7681;padding:6px 0">Checking devices…</div>';
   fetch('/api/scan-cameras').then(r => r.json()).then(d => {
-    btn.disabled = false; btn.textContent = 'Scan Cameras';
-    if (!d.cameras || d.cameras.length === 0) {
-      res.style.display = 'block'; res.style.color = '#f85149';
-      res.textContent = 'No cameras found'; pickList.style.display = 'none'; return;
+    btn.disabled = false; btn.textContent = 'Scan Again';
+    const cam1idx = cfg.cam1_index !== undefined ? cfg.cam1_index : d.cam1;
+    const cam2idx = cfg.cam2_index !== undefined ? cfg.cam2_index : d.cam2;
+    const cams = d.cameras || [];
+
+    // ── Throttle / voltage warning ─────────────────────────────────────────
+    let warn = '';
+    if (d.throttled && d.throttled !== '0x0' && d.throttled !== '0x00000') {
+      const t = parseInt(d.throttled, 16);
+      const msgs = [];
+      if (t & 0x1)     msgs.push('under-voltage NOW');
+      if (t & 0x4)     msgs.push('throttled NOW');
+      if (t & 0x10000) msgs.push('under-voltage has occurred');
+      if (t & 0x40000) msgs.push('throttling has occurred');
+      if (msgs.length)
+        warn += `<div style="background:#da363322;border:1px solid #da3633;border-radius:5px;padding:7px 10px;margin-bottom:8px;font-size:10px;color:#f85149">
+          ⚠ Pi power: ${msgs.join(', ')}<br>
+          <span style="color:#8b949e">Check PSU — weak power can cause camera failures</span>
+        </div>`;
     }
-    res.style.display = 'block'; res.style.color = '#8b949e';
-    res.textContent = 'Found ' + d.cameras.length + ' camera(s) — pick roles:';
-    // Build pick buttons for each camera
-    pickList.style.display = 'block';
-    pickList.innerHTML = d.cameras.map(cam => {
-      const isCam1 = d.cam1 === cam.index;
-      const isCam2 = cfg.cam2_index === cam.index;
-      return `<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;font-size:9px">
-        <span style="flex:1;color:#e6edf3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
-          title="/dev/video${cam.index}">${cam.name}</span>
-        <button class="btn ${isCam1 ? 'bb2' : 'bd'}" style="font-size:8px;padding:3px 6px;white-space:nowrap"
-          onclick="setCam1(${cam.index})">Cam1${isCam1 ? ' ✓' : ''}</button>
-        <button class="btn ${isCam2 ? 'bb2' : 'bd'}" style="font-size:8px;padding:3px 6px;white-space:nowrap"
-          onclick="setCam2FromScan(${cam.index})">Cam2${isCam2 ? ' ✓' : ''}</button>
+    if (d.volts || d.throttled) {
+      warn += `<div style="font-size:9px;color:#6e7681;margin-bottom:8px">
+        ${d.volts ? 'Core: <b style="color:#e6edf3">' + d.volts + '</b>' : ''}
+        ${d.throttled ? ' &nbsp;Throttle: <b style="color:#e6edf3">' + d.throttled + '</b>' : ''}
+      </div>`;
+    }
+
+    if (!cams.length) {
+      list.innerHTML = warn + '<div style="font-size:10px;color:#f85149;padding:4px 0">No cameras found on this device</div>';
+      return;
+    }
+    list.innerHTML = warn + cams.map(cam => {
+      const isCam1 = cam.index === cam1idx;
+      const isCam2 = cam.index === cam2idx;
+      const added  = isCam1 || isCam2;
+      const role   = isCam1 ? 'Main ✓' : isCam2 ? 'Side ✓' : '';
+      const inuse  = cam.active ? '<span style="font-size:9px;color:#3fb950;font-weight:700">active</span>' : '';
+      return `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;background:#21262d;border:1px solid ${added ? '#238636' : '#30363d'};border-radius:5px;padding:7px 10px">
+        <div style="flex:1">
+          <div style="font-size:11px;font-weight:700;color:#e6edf3">${cam.name}</div>
+          <div style="font-size:9px;color:#6e7681">${cam.dev}</div>
+        </div>
+        ${inuse}
+        ${added
+          ? `<span style="font-size:9px;color:#3fb950;font-weight:700">${role}</span>`
+          : `<button class="btn bb2" style="font-size:9px;padding:3px 8px" onclick="addCamFromModal(${cam.index})">Add</button>`}
       </div>`;
     }).join('');
-    // Auto-fill cam2 input with best candidate (not cam1)
-    const inp = document.getElementById('cam2-index-input');
-    if (inp) {
-      const candidate = d.cameras.find(c => c.index !== d.cam1);
-      if (candidate !== undefined) inp.value = candidate.index;
+  }).catch(() => {
+    btn.disabled = false; btn.textContent = 'Retry';
+    list.innerHTML = '<div style="font-size:10px;color:#f85149;padding:6px 0">Scan failed — check connection</div>';
+  });
+}
+function addCamFromModal(idx) {
+  const cam1 = cfg.cam1_index !== undefined ? cfg.cam1_index : -1;
+  const cam2 = cfg.cam2_index !== undefined ? cfg.cam2_index : -1;
+  if (cam1 < 0) {
+    cfg.cam1_index = idx; S('cam1_index', idx);
+  } else if (cam2 < 0) {
+    cfg.cam2_index = idx; S('cam2_index', idx);
+  } else {
+    alert('Already have 2 cameras — remove one first.'); return;
+  }
+  closeAddCamModal();
+  renderCamList();
+}
+function removeCam(role) {
+  if (role === 'cam1') {
+    const cam2 = cfg.cam2_index !== undefined ? cfg.cam2_index : -1;
+    if (cam2 >= 0) {
+      cfg.cam1_index = cam2; cfg.cam2_index = -1;
+      S('cam1_index', cfg.cam1_index); S('cam2_index', -1);
+    } else {
+      cfg.cam1_index = -1; S('cam1_index', -1);
     }
-  }).catch(() => { btn.disabled = false; btn.textContent = 'Scan Cameras'; });
+  } else {
+    cfg.cam2_index = -1; S('cam2_index', -1);
+  }
+  renderCamList();
 }
-function setCam1(idx) {
-  cfg.cam1_index = idx;
-  S('cam1_index', idx);
-  const st = document.getElementById('cam1-status');
-  if (st) { st.textContent = 'index ' + idx + ' (reconnecting…)'; st.className = 'sv'; }
-  // Re-render pick list to update checkmarks
-  setTimeout(() => document.querySelector('#cam-pick-list') && scanCameras({target: document.querySelector('[onclick*="scanCameras"]')}), 1500);
+function camCard(idx, label, role) {
+  const side   = cfg.cam2_side   || 'right';
+  const aspect = cfg.cam2_aspect || 'fit';
+  const fh     = cfg.cam2_flip_h || false;
+  const fv     = cfg.cam2_flip_v || false;
+  const settings = role === 'cam2' ? `
+    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #30363d">
+      <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Position</div>
+      <div class="mode-toggle" style="height:24px;margin-bottom:7px">
+        <button id="cam2-side-left"  onclick="setCam2Side('left')"  class="${side==='left'?'active':''}">◀ Left</button>
+        <button id="cam2-side-right" onclick="setCam2Side('right')" class="${side==='right'?'active':''}">Right ▶</button>
+      </div>
+      <div style="font-size:9px;color:#8b949e;text-transform:uppercase;letter-spacing:.8px;margin-bottom:4px">Aspect Ratio</div>
+      <div class="mode-toggle" style="height:24px;margin-bottom:7px">
+        <button id="cam2-asp-fit"    onclick="setCam2Aspect('fit')"    class="${aspect==='fit'?'active':''}">Fit</button>
+        <button id="cam2-asp-native" onclick="setCam2Aspect('native')" class="${aspect==='native'?'active':''}">Native</button>
+      </div>
+      <div style="display:flex;gap:4px">
+        <button class="btn ${fh?'bb2':'bd'}" id="cam2-fh-btn" onclick="toggleCam2Flip('cam2_flip_h')" style="flex:1;font-size:9px;padding:3px 0">Flip H</button>
+        <button class="btn ${fv?'bb2':'bd'}" id="cam2-fv-btn" onclick="toggleCam2Flip('cam2_flip_v')" style="flex:1;font-size:9px;padding:3px 0">Flip V</button>
+      </div>
+    </div>` : '';
+  return `<div style="background:#21262d;border:1px solid #30363d;border-radius:5px;padding:7px 10px;margin-bottom:6px">
+    <div style="display:flex;align-items:center;gap:6px">
+      <div style="flex:1">
+        <div style="font-size:11px;font-weight:700;color:#e6edf3">Camera ${idx}</div>
+        <div style="font-size:9px;color:#8b949e">${label} · /dev/video${idx}</div>
+      </div>
+      <span id="${role}-dot" style="font-size:9px;font-weight:700;color:#6e7681">…</span>
+      <button onclick="removeCam('${role}')" style="background:none;border:none;color:#6e7681;cursor:pointer;font-size:13px;padding:2px 5px;border-radius:3px;line-height:1" title="Remove">✕</button>
+    </div>
+    ${settings}
+  </div>`;
 }
-function setCam2FromScan(idx) {
-  const inp = document.getElementById('cam2-index-input');
-  if (inp) inp.value = idx;
-  addCam2();
+function renderCamList() {
+  const c = document.getElementById('cam-list');
+  if (!c) return;
+  const cam1 = cfg.cam1_index !== undefined ? cfg.cam1_index : -1;
+  const cam2 = cfg.cam2_index !== undefined ? cfg.cam2_index : -1;
+  let html = '';
+  if (cam1 >= 0) html += camCard(cam1, 'Main', 'cam1');
+  if (cam2 >= 0) html += camCard(cam2, 'Side', 'cam2');
+  if (!html) html = '<div style="font-size:10px;color:#6e7681;margin-bottom:8px">No cameras — press Add Camera</div>';
+  c.innerHTML = html;
+  const addBtn = document.getElementById('add-cam-btn');
+  if (addBtn) addBtn.style.display = (cam1 >= 0 && cam2 >= 0) ? 'none' : '';
+  applyCam2PiP();
+}
+function applyCam2PiP() {
+  const pip = document.getElementById('cam2-pip');
+  if (!pip) return;
+  const cam2 = cfg.cam2_index !== undefined ? cfg.cam2_index : -1;
+  if (cam2 < 0) { pip.style.display = 'none'; pip.src = ''; return; }
+  const side   = cfg.cam2_side   || 'right';
+  const aspect = cfg.cam2_aspect || 'fit';
+  pip.style.display    = 'block';
+  pip.style.right      = side === 'right' ? '8px' : 'auto';
+  pip.style.left       = side === 'left'  ? '8px' : 'auto';
+  pip.style.objectFit  = aspect === 'fit' ? 'cover' : 'contain';
+  if (!pip.src || !pip.src.endsWith('/video_feed2')) pip.src = '/video_feed2';
 }
 function setCam2Side(side) {
   cfg.cam2_side = side;
   S('cam2_side', side);
-  document.getElementById('cam2-side-left').className  = side === 'left'  ? 'active' : '';
-  document.getElementById('cam2-side-right').className = side === 'right' ? 'active' : '';
-}
-function toggleCam2Flip(key) {
-  const cur  = cfg[key] || false;
-  const next = !cur;
-  cfg[key] = next;
-  S(key, next);
-  const btnId = key === 'cam2_flip_h' ? 'cam2-fh-btn' : 'cam2-fv-btn';
-  const btn = document.getElementById(btnId);
-  if (btn) btn.className = 'btn ' + (next ? 'bb2' : 'bd');
-}
-function _applyCam2UI() {
-  const idx = cfg.cam2_index !== undefined ? cfg.cam2_index : -1;
-  const addRow      = document.getElementById('cam2-add-row');
-  const settingsRow = document.getElementById('cam2-settings-row');
-  if (addRow)      addRow.style.display      = idx < 0 ? 'block' : 'none';
-  if (settingsRow) settingsRow.style.display = idx < 0 ? 'none'  : 'block';
-  const st = document.getElementById('cam2-status');
-  if (st) { st.textContent = idx < 0 ? 'off' : 'active (index ' + idx + ')'; st.className = 'sv ' + (idx < 0 ? 'sof' : 'son'); }
-  const fh = document.getElementById('cam2-fh-btn');
-  const fv = document.getElementById('cam2-fv-btn');
-  if (fh) fh.className = 'btn ' + (cfg.cam2_flip_h ? 'bb2' : 'bd');
-  if (fv) fv.className = 'btn ' + (cfg.cam2_flip_v ? 'bb2' : 'bd');
-  const side = cfg.cam2_side || 'right';
+  applyCam2PiP();
   const sl = document.getElementById('cam2-side-left');
   const sr = document.getElementById('cam2-side-right');
   if (sl) sl.className = side === 'left'  ? 'active' : '';
   if (sr) sr.className = side === 'right' ? 'active' : '';
-  const aspect = cfg.cam2_aspect || 'fit';
+}
+function setCam2Aspect(aspect) {
+  cfg.cam2_aspect = aspect;
+  S('cam2_aspect', aspect);
+  applyCam2PiP();
   const af = document.getElementById('cam2-asp-fit');
   const an = document.getElementById('cam2-asp-native');
   if (af) af.className = aspect === 'fit'    ? 'active' : '';
   if (an) an.className = aspect === 'native' ? 'active' : '';
+}
+function toggleCam2Flip(key) {
+  cfg[key] = !cfg[key];
+  S(key, cfg[key]);
+  const btnId = key === 'cam2_flip_h' ? 'cam2-fh-btn' : 'cam2-fv-btn';
+  const btn = document.getElementById(btnId);
+  if (btn) btn.className = 'btn ' + (cfg[key] ? 'bb2' : 'bd');
 }
 
 function toggleFlip(key) {
@@ -961,7 +958,7 @@ function loadCfg() {
     renderStrips(d.strips || []);
     syncTotalLEDs(d.strips || []);
     _applyFlipUI();
-    _applyCam2UI();
+    renderCamList();   // also calls applyCam2PiP()
   });
 }
 
@@ -1014,5 +1011,15 @@ function openShutdown() { document.getElementById('shutdownModal').classList.add
 function closeShutdown() { document.getElementById('shutdownModal').classList.remove('open'); }
 function doShutdown() { document.getElementById('shutdownModal').classList.remove('open'); document.getElementById('shutdownDone').style.display='none'; document.getElementById('shutdownDone').style.display='flex'; fetch('/api/shutdown', {method:'POST'}).catch(()=>{}); }
 </script>
+<!-- ADD CAMERA MODAL -->
+<div id="add-cam-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:24px;width:320px;max-width:90vw">
+    <div style="font-size:13px;font-weight:700;color:#e6edf3;margin-bottom:4px">Add Camera</div>
+    <div style="font-size:10px;color:#6e7681;margin-bottom:16px">Scan to find connected cameras, then press Add</div>
+    <button class="btn bd" id="scan-modal-btn" onclick="doScanCameras()" style="width:100%;margin-bottom:10px;font-size:11px">Scan Cameras</button>
+    <div id="scan-modal-list" style="max-height:240px;overflow-y:auto"></div>
+    <button class="btn bd" onclick="closeAddCamModal()" style="width:100%;margin-top:12px">Cancel</button>
+  </div>
+</div>
 <div class="shutdown-modal" id="shutdownModal"><div class="shutdown-modal-box"><h2>⚠ Stop Service?</h2><p>This will stop the detection service.<br>systemd will restart it automatically (~5 s).</p><div class="smd-row"><button class="smd-cancel" onclick="closeShutdown()">Cancel</button><button class="smd-confirm" onclick="doShutdown()">Stop Service</button></div></div></div><div class="shutdown-done" id="shutdownDone" style="display:none;position:fixed;inset:0;background:#0d1117;z-index:9999;align-items:center;justify-content:center;flex-direction:column;gap:16px;color:#f85149;font-family:monospace;font-size:18px"><div>⏻ Service stopping…</div><div style="font-size:12px;color:#8b949e">Restarting via systemd in ~5 s</div></div></body>
 </html>

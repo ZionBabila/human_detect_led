@@ -1,0 +1,13 @@
+# Secrets
+.password_hash
+.secret_key
+
+# Runtime state
+.setup_complete
+*.log
+*.log.*
+
+# Python
+__pycache__/
+*.pyc
+*.pyo

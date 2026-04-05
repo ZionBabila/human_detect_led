@@ -19,7 +19,15 @@ DEFAULT = {
     'gpio_pin': 18,
     'strips': [
         {'gpio_pin': 18, 'led_count': 50, 'enabled': True, 'label': 'Strip 1', 'color': '#ff6b6b'}
-    ]
+    ],
+    'cam1_index': -1,   # -1 = auto-detect
+    'cam2_index': -1,
+    'flip_h': True,
+    'flip_v': False,
+    'cam2_flip_h': False,
+    'cam2_flip_v': False,
+    'cam2_side':   'right',  # 'left' | 'right'
+    'cam2_aspect': 'fit',    # 'fit' | 'native'
 }
 
 # ── LED HARDWARE (rpi_ws281x) ──────────────────────────────────────────────────
@@ -31,6 +39,10 @@ except ImportError:
     print("WARNING: rpi_ws281x not available, LEDs disabled")
 
 _led_strip = None
+_cam1_dev  = None   # currently active camera device index
+_cam2_dev  = None
+_cam2_frame      = None
+_cam2_frame_lock = threading.Lock()
 
 def init_led_strip(gpio_pin=18, led_count=50, brightness=200):
     global _led_strip
@@ -523,33 +535,122 @@ def hog_confirm_thread():
 
 
 # ── camera thread ──────────────────────────────────────────────────────────────
+def _open_camera(idx):
+    """Try to open a camera by index; return configured VideoCapture or None."""
+    try:
+        c = cv2.VideoCapture(idx, cv2.CAP_V4L2)
+        if c.isOpened():
+            c.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+            c.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+            c.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+            c.set(cv2.CAP_PROP_FPS, 30)
+            return c
+        c.release()
+    except Exception:
+        pass
+    return None
+
 def cam_thread():
-    global latest_raw, is_running
+    global latest_raw, is_running, _cam1_dev
     cam = None
-    for idx in ['/dev/video0', '/dev/video1', 0, 4, 2, 1]:
-        cam = cv2.VideoCapture(idx, cv2.CAP_V4L2) if isinstance(idx, str) \
-              else cv2.VideoCapture(idx, cv2.CAP_V4L2)
-        if cam.isOpened():
-            print(f"Camera at idx {idx}")
+
+    # Initial open: use configured index, otherwise auto-detect
+    cfg0 = load_cfg()
+    configured = cfg0.get('cam1_index', -1)
+    candidates = ([configured] if configured >= 0 else []) + [0, 1, 2, 4]
+    for idx in candidates:
+        cam = _open_camera(idx)
+        if cam:
+            _cam1_dev = idx
+            print(f"Camera at /dev/video{idx}")
             break
-    cam.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-    cam.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    cam.set(cv2.CAP_PROP_FPS, 30)
 
     while is_running:
         if check_thermal() == 3:
             time.sleep(1)
             continue
+
+        # Hot-swap: if cam1_index changed in config, switch to new camera
+        cfg0 = load_cfg()
+        wanted = cfg0.get('cam1_index', -1)
+        if wanted >= 0 and wanted != _cam1_dev:
+            new_cam = _open_camera(wanted)
+            if new_cam:
+                if cam:
+                    cam.release()
+                cam = new_cam
+                _cam1_dev = wanted
+                print(f"Switched to camera /dev/video{wanted}")
+
+        if not cam or not cam.isOpened():
+            time.sleep(0.5)
+            continue
+
         ret, frame = cam.read()
         if not ret:
             time.sleep(0.03)
             continue
-        frame = cv2.flip(frame, 1)
+
+        if cfg0.get('flip_h', True):
+            frame = cv2.flip(frame, 1)
+        if cfg0.get('flip_v', False):
+            frame = cv2.flip(frame, 0)
+
         with raw_lock:
             latest_raw = frame
         _new_frame_ev.set()   # wake detect_thread
-    cam.release()
+
+    if cam:
+        cam.release()
+
+
+# ── cam2 thread ────────────────────────────────────────────────────────────────
+def cam2_thread():
+    global _cam2_frame, _cam2_dev, is_running
+    cam      = None
+    last_idx = -999   # sentinel so first loop always checks
+
+    while is_running:
+        cfg0   = load_cfg()
+        wanted = cfg0.get('cam2_index', -1)
+
+        # Switch camera if index changed
+        if wanted != last_idx:
+            if cam:
+                cam.release()
+                cam = None
+            _cam2_dev = None
+            last_idx  = wanted
+            if wanted >= 0:
+                cam = _open_camera(wanted)
+                if cam:
+                    _cam2_dev = wanted
+                    print(f"Cam2 opened at /dev/video{wanted}")
+
+        if not cam or not cam.isOpened() or wanted < 0:
+            with _cam2_frame_lock:
+                _cam2_frame = None
+            time.sleep(0.5)
+            continue
+
+        ret, frame = cam.read()
+        if not ret:
+            time.sleep(0.05)
+            continue
+
+        cfg0 = load_cfg()
+        if cfg0.get('cam2_flip_h', False):
+            frame = cv2.flip(frame, 1)
+        if cfg0.get('cam2_flip_v', False):
+            frame = cv2.flip(frame, 0)
+
+        with _cam2_frame_lock:
+            _cam2_frame = frame
+
+        time.sleep(0.033)   # ~30 fps
+
+    if cam:
+        cam.release()
 
 
 # ── detection thread ───────────────────────────────────────────────────────────
@@ -644,6 +745,20 @@ def video_feed():
     return Response(gen_frames(is_remote=is_remote),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route('/video_feed2')
+def video_feed2():
+    def gen2():
+        while is_running:
+            with _cam2_frame_lock:
+                frame = _cam2_frame
+            if frame is None:
+                time.sleep(0.1)
+                continue
+            _, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+            yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n')
+            time.sleep(0.033)
+    return Response(gen2(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
 @app.route('/api/thermal')
 def get_thermal():
     try:
@@ -686,10 +801,89 @@ def shutdown():
 
 @app.route('/api/status')
 def status():
+    cfg0 = load_cfg()
     return jsonify({
         'camera_active':  current_frame is not None,
         'use_yolo':       USE_YOLO,
-        'stream_enabled': _stream_remote_enabled
+        'stream_enabled': _stream_remote_enabled,
+        'cam1_dev':       _cam1_dev,
+        'cam2_active':    _cam2_dev is not None,
+        'cam2_index':     cfg0.get('cam2_index', -1),
+    })
+
+@app.route('/api/scan-cameras')
+def scan_cameras():
+    import glob as _glob
+    cfg0 = load_cfg()
+    cameras = []
+
+    # Words in sysfs device name that mean it is NOT a real camera
+    # (RPi has many /dev/video* nodes for codecs, ISP, etc.)
+    _SKIP = {'codec', 'isp', 'unicam', 'bcm2835', 'rpivid',
+             'hevc', 'h264', 'mpeg', 'jpeg', 'still', 'image', 'capture',
+             'stateless', 'output', 'mem2mem'}
+
+    for dev in sorted(_glob.glob('/dev/video*')):
+        num = dev.replace('/dev/video', '')
+        if not num.isdigit():
+            continue
+        idx = int(num)
+
+        # Read device name from sysfs — instant, no camera open needed
+        try:
+            sysname = open(f'/sys/class/video4linux/video{idx}/name').read().strip()
+        except Exception:
+            sysname = f'Camera {idx}'
+
+        # Skip non-camera devices by name
+        if any(w in sysname.lower() for w in _SKIP):
+            continue
+
+        # Already held open by cam_thread or cam2_thread — include directly, never re-open
+        if idx == _cam1_dev or idx == _cam2_dev:
+            cameras.append({'index': idx, 'dev': dev, 'name': sysname, 'active': True})
+            continue
+
+        # Try to open with a hard 2-second timeout (runs in a worker thread)
+        result = [False]
+        def _try(i=idx, r=result):
+            try:
+                cap = cv2.VideoCapture(i, cv2.CAP_V4L2)
+                r[0] = cap.isOpened()
+                cap.release()
+            except Exception:
+                pass
+        t = threading.Thread(target=_try, daemon=True)
+        t.start()
+        t.join(timeout=2.0)
+
+        if result[0]:
+            cameras.append({'index': idx, 'dev': dev, 'name': sysname, 'active': False})
+
+    # ── Pi power/throttle status ──────────────────────────────────────────────
+    throttled = None
+    try:
+        out = subprocess.check_output(['vcgencmd', 'get_throttled'], text=True, timeout=2)
+        throttled = out.strip().split('=')[-1]   # e.g. '0x0' or '0x50005'
+    except Exception:
+        pass
+
+    # ── Pi core voltage ───────────────────────────────────────────────────────
+    volts = None
+    try:
+        out = subprocess.check_output(['vcgencmd', 'measure_volts', 'core'], text=True, timeout=2)
+        volts = out.strip().split('=')[-1]       # e.g. '1.2063V'
+    except Exception:
+        pass
+
+    cam1 = cfg0.get('cam1_index', _cam1_dev if _cam1_dev is not None else -1)
+    cam2 = cfg0.get('cam2_index', -1)
+    return jsonify({
+        'cameras':  cameras,
+        'cam1':     cam1,
+        'cam2':     cam2,
+        'throttled': throttled,
+        'volts':    volts,
     })
 
 if __name__ == '__main__':
@@ -707,6 +901,7 @@ if __name__ == '__main__':
 
     threading.Thread(target=led_thread,         daemon=True).start()
     threading.Thread(target=cam_thread,         daemon=True).start()
+    threading.Thread(target=cam2_thread,        daemon=True).start()
     threading.Thread(target=detect_thread,      daemon=True).start()
     threading.Thread(target=hog_confirm_thread, daemon=True).start()
     print("Starting on http://0.0.0.0:5000")

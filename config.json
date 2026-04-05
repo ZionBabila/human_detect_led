@@ -24,6 +24,7 @@
   "cam2_index": -1,
   "cam2_flip_h": false,
   "cam2_flip_v": false,
-  "cam2_side": "right",
-  "cam2_aspect": "native"
+  "cam2_side": "left",
+  "cam2_aspect": "fit",
+  "cam1_index": 2
 }
