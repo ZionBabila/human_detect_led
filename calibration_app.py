@@ -43,6 +43,8 @@ _cam1_dev  = None   # currently active camera device index
 _cam2_dev  = None
 _cam2_frame      = None
 _cam2_frame_lock = threading.Lock()
+_cam2_last_dev   = None   # most-recently-released cam2 device index
+_cam2_released_at = 0.0   # timestamp of that release
 
 def init_led_strip(gpio_pin=18, led_count=50, brightness=200):
     global _led_strip
@@ -606,7 +608,7 @@ def cam_thread():
 
 # ── cam2 thread ────────────────────────────────────────────────────────────────
 def cam2_thread():
-    global _cam2_frame, _cam2_dev, is_running
+    global _cam2_frame, _cam2_dev, _cam2_last_dev, _cam2_released_at, is_running
     cam      = None
     last_idx = -999   # sentinel so first loop always checks
     next_try = 0.0    # earliest timestamp to attempt (re)open after a failure
@@ -621,8 +623,12 @@ def cam2_thread():
 
         if need_open:
             if cam and wanted != last_idx:   # release only when index actually changed
+                old_idx = _cam2_dev
                 cam.release()
                 cam = None
+                _cam2_last_dev   = old_idx
+                _cam2_released_at = time.time()
+                print(f"Cam2 released /dev/video{old_idx}")
             _cam2_dev = None
             last_idx  = wanted
             if wanted >= 0:
@@ -630,10 +636,11 @@ def cam2_thread():
                 if cam:
                     _cam2_dev = wanted
                     next_try  = 0.0
-                    print(f"Cam2 opened at /dev/video{wanted}")
+                    print(f"Cam2 opened /dev/video{wanted}")
                 else:
                     cam = None
                     next_try = time.time() + 3.0   # retry in 3 s
+                    print(f"Cam2 failed to open /dev/video{wanted}, retry in 3s")
 
         if not cam or not cam.isOpened() or wanted < 0:
             with _cam2_frame_lock:
@@ -819,6 +826,35 @@ def status():
         'cam2_index':     cfg0.get('cam2_index', -1),
     })
 
+@app.route('/api/cameras/debug')
+def cameras_debug():
+    """Real-time camera state — visit in browser to diagnose issues."""
+    import glob as _glob
+    devs = []
+    for dev in sorted(_glob.glob('/dev/video*')):
+        num = dev.replace('/dev/video', '')
+        if not num.isdigit():
+            continue
+        idx = int(num)
+        try:
+            name = open(f'/sys/class/video4linux/video{idx}/name').read().strip()
+        except Exception:
+            name = '?'
+        role = 'cam1' if idx == _cam1_dev else ('cam2' if idx == _cam2_dev else 'free')
+        devs.append({'dev': dev, 'name': name, 'role': role})
+
+    return jsonify({
+        'cam1_dev':          _cam1_dev,
+        'cam2_dev':          _cam2_dev,
+        'cam2_last_dev':     _cam2_last_dev,
+        'cam2_released_secs_ago': round(time.time() - _cam2_released_at, 1) if _cam2_released_at else None,
+        'cam2_frame_ready':  _cam2_frame is not None,
+        'cam1_frame_ready':  current_frame is not None,
+        'config_cam1_index': load_cfg().get('cam1_index', -1),
+        'config_cam2_index': load_cfg().get('cam2_index', -1),
+        'devices': devs,
+    })
+
 @app.route('/api/scan-cameras')
 def scan_cameras():
     import glob as _glob
@@ -852,18 +888,27 @@ def scan_cameras():
             cameras.append({'index': idx, 'dev': dev, 'name': sysname, 'active': True})
             continue
 
-        # Try to open with a hard 2-second timeout (runs in a worker thread)
+        # Recently released by cam2 — may still be locked at kernel level for a few seconds.
+        # Include it directly so the user can re-add it without waiting.
+        if idx == _cam2_last_dev and time.time() - _cam2_released_at < 6.0:
+            cameras.append({'index': idx, 'dev': dev, 'name': sysname, 'active': False})
+            continue
+
+        # Try to open AND grab one frame to confirm this is a real capture node.
+        # isOpened() alone returns True for metadata-only nodes (e.g. /dev/video1, video3)
+        # which share a camera name but cannot stream video — grab() distinguishes them.
         result = [False]
         def _try(i=idx, r=result):
             try:
                 cap = cv2.VideoCapture(i, cv2.CAP_V4L2)
-                r[0] = cap.isOpened()
+                if cap.isOpened():
+                    r[0] = cap.grab()   # True only for real video capture nodes
                 cap.release()
             except Exception:
                 pass
         t = threading.Thread(target=_try, daemon=True)
         t.start()
-        t.join(timeout=2.0)
+        t.join(timeout=3.0)   # 3 s to handle V4L2 release latency
 
         if result[0]:
             cameras.append({'index': idx, 'dev': dev, 'name': sysname, 'active': False})

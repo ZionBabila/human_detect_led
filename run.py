@@ -392,9 +392,11 @@ _new_frame  = threading.Event()
 is_running  = True
 current_frame = None
 latest_raw    = None
-latest_raw2   = None   # second camera; None = not active
-_cam2_active  = False  # True when cam2_worker is capturing frames
-_cam1_dev     = None   # device index/path cam_worker successfully opened
+latest_raw2      = None   # second camera; None = not active
+_cam2_active     = False  # True when cam2_worker is capturing frames
+_cam1_dev        = None   # device index/path cam_worker successfully opened
+_cam2_last_dev   = None   # most-recently-released cam2 device index
+_cam2_released_at = 0.0   # timestamp of that release
 
 detection_state = {
     "detected": False, "bbox": None, "active_leds": [],
@@ -581,14 +583,25 @@ def _cam_device_name(index: int) -> str:
     except Exception:
         return ''
 
-def _open_verified_camera(path_or_int) -> 'cv2.VideoCapture | None':
-    """Open a camera and verify it can deliver a real frame. Returns cap or None."""
+def _open_verified_camera(path_or_int, max_wait_s: float = 0.0) -> 'cv2.VideoCapture | None':
+    """Open a camera and verify it can deliver a real frame. Returns cap or None.
+
+    max_wait_s: extra time budget (seconds) for cameras that need to warm up after
+    being just released (e.g. scan after remove).  0 = fast path (5 reads, no delay).
+    """
     try:
         c = cv2.VideoCapture(path_or_int, cv2.CAP_V4L2)
         if not c.isOpened():
             c.release(); return None
-        # Try up to 5 reads — metadata nodes return False immediately
+        # Fast check: 5 reads with no sleep — metadata-only nodes fail here
         for _ in range(5):
+            ret, _ = c.read()
+            if ret:
+                return c
+        # Slow check: give recently-released cameras up to max_wait_s to restart streaming
+        deadline = time.time() + max_wait_s
+        while time.time() < deadline:
+            time.sleep(0.1)
             ret, _ = c.read()
             if ret:
                 return c
@@ -653,7 +666,7 @@ def cam_worker():
 
 # ── second camera thread ──────────────────────────────────────────────────────
 def cam2_worker():
-    global latest_raw2, is_running, _cam2_active
+    global latest_raw2, is_running, _cam2_active, _cam2_last_dev, _cam2_released_at
     while is_running:
         _c2 = load_cfg()
         idx = int(_c2.get('cam2_index', -1))
@@ -702,7 +715,10 @@ def cam2_worker():
             elif fv:       frame = cv2.flip(frame,  0)
             with raw2_lock: latest_raw2 = frame
             _cam2_active = True
+        _cam2_last_dev    = idx
+        _cam2_released_at = time.time()
         cam.release()
+        log.info("Camera2: released /dev/video%d", idx)
         with raw2_lock: latest_raw2 = None
         _cam2_active = False
         if is_running: time.sleep(2)
@@ -1000,14 +1016,6 @@ def test_led_route():
 @require_login
 def scan_cameras():
     """Scan /dev/video0..9 (even nodes = capture). Verify each can deliver a frame."""
-    found = []
-    for i in range(0, 10, 2):  # even nodes only — odd are metadata on USB cams
-        path = f'/dev/video{i}'
-        cam = _open_verified_camera(path)
-        if cam is None: continue
-        cam.release()
-        name = _cam_device_name(i) or f'Camera {i}'
-        found.append({'index': i, 'name': name})
     # Resolve active cam1 index
     cam1_int = None
     if _cam1_dev is not None:
@@ -1015,7 +1023,76 @@ def scan_cameras():
         if cam1_int is None:
             m = re.match(r'/dev/video(\d+)', str(_cam1_dev))
             if m: cam1_int = int(m.group(1))
+
+    found = []
+    cfg0 = load_cfg()
+    cam2_int = int(cfg0.get('cam2_index', -1))
+    recently_released = (
+        _cam2_last_dev is not None and
+        time.time() - _cam2_released_at < 8.0
+    )
+
+    for i in range(0, 10, 2):  # even nodes only — odd are metadata on USB cams
+        name = _cam_device_name(i) or f'Camera {i}'
+
+        # Already held open by cam_thread — include without re-opening
+        if i == cam1_int:
+            found.append({'index': i, 'name': name, 'active': True}); continue
+
+        # Already held open by cam2_worker — include without re-opening
+        if i == cam2_int and _cam2_active:
+            found.append({'index': i, 'name': name, 'active': True}); continue
+
+        # Recently released by cam2_worker — include directly; the device may still
+        # be locked at kernel level and _open_verified_camera would fail the fast path
+        if i == _cam2_last_dev and recently_released:
+            found.append({'index': i, 'name': name, 'active': False}); continue
+
+        # Verify in a background thread so a hung open can't block the HTTP response
+        result = [None]   # will hold the opened cap or None
+        def _check(idx=i, r=result):
+            # Give recently-released cameras up to 1.5 s to restart streaming
+            wait = 1.5 if (idx == _cam2_last_dev and recently_released) else 0.0
+            r[0] = _open_verified_camera(f'/dev/video{idx}', max_wait_s=wait)
+        t = threading.Thread(target=_check, daemon=True)
+        t.start(); t.join(timeout=3.0)
+        cap = result[0]
+        if cap is not None:
+            try: cap.release()
+            except Exception: pass
+            found.append({'index': i, 'name': name, 'active': False})
+
     return jsonify({'cameras': found, 'cam1': cam1_int})
+
+@app.route('/api/cameras/debug')
+@require_login
+def cameras_debug():
+    """Real-time camera state — open in browser to diagnose issues."""
+    return jsonify({
+        'cam1_dev':               _cam1_dev,
+        'cam2_active':            _cam2_active,
+        'cam2_last_dev':          _cam2_last_dev,
+        'cam2_released_secs_ago': round(time.time() - _cam2_released_at, 1) if _cam2_released_at else None,
+        'cam2_frame_ready':       latest_raw2 is not None,
+        'cam1_frame_ready':       current_frame is not None,
+        'config_cam1_index':      load_cfg().get('cam1_index', -1),
+        'config_cam2_index':      load_cfg().get('cam2_index', -1),
+    })
+
+@app.route('/video_feed2')
+@require_login
+def video_feed2():
+    """MJPEG stream for cam2 PiP preview."""
+    def _gen2():
+        while True:
+            with raw2_lock:
+                frame = latest_raw2
+            if frame is None:
+                time.sleep(0.1); continue
+            _, buf = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 70])
+            yield b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + buf.tobytes() + b'\r\n'
+            time.sleep(0.066)   # ~15 fps — matches cam2_worker throttle
+    return Response(_gen2(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/api/thermal')
 @require_login
