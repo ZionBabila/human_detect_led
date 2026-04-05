@@ -569,6 +569,12 @@ function pollStatus() {
     if (dot1) { dot1.textContent = d.camera_active ? 'active' : '…'; dot1.style.color = d.camera_active ? '#3fb950' : '#6e7681'; }
     const dot2 = document.getElementById('cam2-dot');
     if (dot2) { dot2.textContent = d.cam2_active ? 'active' : 'off'; dot2.style.color = d.cam2_active ? '#3fb950' : '#6e7681'; }
+    // Reload PiP stream when cam2 transitions from inactive → active
+    if (d.cam2_active && !_cam2WasActive && cfg.cam2_index >= 0) {
+      const pip = document.getElementById('cam2-pip');
+      if (pip) { pip.src = '/video_feed2?' + Date.now(); pip.style.display = 'block'; }
+    }
+    _cam2WasActive = d.cam2_active;
   }).catch(() => {});
 }
 
@@ -587,6 +593,7 @@ function S(k, v) {
     .then(({ok, data}) => { if (!ok) showToast((data.errors || ['Config error']).join(' · ')); })
     .catch(() => {});
 }
+let _cam2WasActive = false;
 let _toastTimer = null;
 function showToast(msg) {
   let t = document.getElementById('cfg-toast');
@@ -816,7 +823,7 @@ function applyCam2PiP() {
   pip.style.right      = side === 'right' ? '8px' : 'auto';
   pip.style.left       = side === 'left'  ? '8px' : 'auto';
   pip.style.objectFit  = aspect === 'fit' ? 'cover' : 'contain';
-  if (!pip.src || !pip.src.endsWith('/video_feed2')) pip.src = '/video_feed2';
+  pip.src = '/video_feed2?' + Date.now();
 }
 function setCam2Side(side) {
   cfg.cam2_side = side;

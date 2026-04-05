@@ -609,14 +609,18 @@ def cam2_thread():
     global _cam2_frame, _cam2_dev, is_running
     cam      = None
     last_idx = -999   # sentinel so first loop always checks
+    next_try = 0.0    # earliest timestamp to attempt (re)open after a failure
 
     while is_running:
         cfg0   = load_cfg()
         wanted = cfg0.get('cam2_index', -1)
 
-        # Switch camera if index changed
-        if wanted != last_idx:
-            if cam:
+        # Open (or re-open) if: index changed, OR camera dropped and retry window passed
+        need_open = (wanted != last_idx) or \
+                    (cam is None and wanted >= 0 and time.time() >= next_try)
+
+        if need_open:
+            if cam and wanted != last_idx:   # release only when index actually changed
                 cam.release()
                 cam = None
             _cam2_dev = None
@@ -625,7 +629,11 @@ def cam2_thread():
                 cam = _open_camera(wanted)
                 if cam:
                     _cam2_dev = wanted
+                    next_try  = 0.0
                     print(f"Cam2 opened at /dev/video{wanted}")
+                else:
+                    cam = None
+                    next_try = time.time() + 3.0   # retry in 3 s
 
         if not cam or not cam.isOpened() or wanted < 0:
             with _cam2_frame_lock:
