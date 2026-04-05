@@ -1037,16 +1037,16 @@ def scan_cameras():
 
         # Already held open by cam_thread — include without re-opening
         if i == cam1_int:
-            found.append({'index': i, 'name': name, 'active': True}); continue
+            found.append({'index': i, 'dev': f'/dev/video{i}', 'name': name, 'active': True}); continue
 
         # Already held open by cam2_worker — include without re-opening
         if i == cam2_int and _cam2_active:
-            found.append({'index': i, 'name': name, 'active': True}); continue
+            found.append({'index': i, 'dev': f'/dev/video{i}', 'name': name, 'active': True}); continue
 
         # Recently released by cam2_worker — include directly; the device may still
         # be locked at kernel level and _open_verified_camera would fail the fast path
         if i == _cam2_last_dev and recently_released:
-            found.append({'index': i, 'name': name, 'active': False}); continue
+            found.append({'index': i, 'dev': f'/dev/video{i}', 'name': name, 'active': False}); continue
 
         # Verify in a background thread so a hung open can't block the HTTP response
         result = [None]   # will hold the opened cap or None
@@ -1060,7 +1060,7 @@ def scan_cameras():
         if cap is not None:
             try: cap.release()
             except Exception: pass
-            found.append({'index': i, 'name': name, 'active': False})
+            found.append({'index': i, 'dev': f'/dev/video{i}', 'name': name, 'active': False})
 
     return jsonify({'cameras': found, 'cam1': cam1_int})
 

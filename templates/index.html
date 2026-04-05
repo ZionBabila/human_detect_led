@@ -164,7 +164,7 @@ body{font-family:'Segoe UI',sans-serif;background:#0d1117;color:#e6edf3;height:1
 <div class="layout">
   <div class="main">
     <div class="cam-area">
-      <img id="videoFeed" id="feed" src="/video_feed" alt="feed">
+      <img id="videoFeed" src="/video_feed" alt="feed">
       <img id="cam2-pip" src="" alt="cam2"
         style="display:none;position:absolute;bottom:30px;right:8px;width:200px;height:150px;
                border:2px solid #30363d;border-radius:5px;object-fit:cover;background:#000;
@@ -503,8 +503,15 @@ function toggleStream() {
     refreshStreamUI();
     const feed = document.getElementById('videoFeed');
     const ph   = document.getElementById('streamPlaceholder');
-    if (!runMode && feed) feed.style.display = streamEnabled ? '' : 'none';
-    if (!runMode && ph)   ph.style.display   = streamEnabled ? 'none' : 'flex';
+    if (!runMode && ph) ph.style.display = streamEnabled ? 'none' : 'flex';
+    if (!runMode && feed) {
+      if (streamEnabled) {
+        feed.src = '/video_feed?' + Date.now();  // force fresh MJPEG connection
+        feed.style.display = '';
+      } else {
+        feed.style.display = 'none';
+      }
+    }
   }).catch(() => {});
 }
 function refreshStreamUI() {
@@ -594,6 +601,7 @@ function S(k, v) {
     .catch(() => {});
 }
 let _cam2WasActive = false;
+let _scanCam1 = -1;   // cam1 device index reported by last scan (used when cam1_index=-1)
 let _toastTimer = null;
 function showToast(msg) {
   let t = document.getElementById('cfg-toast');
@@ -685,7 +693,10 @@ function doScanCameras() {
   list.innerHTML = '<div style="font-size:10px;color:#6e7681;padding:6px 0">Checking devices…</div>';
   fetch('/api/scan-cameras').then(r => r.json()).then(d => {
     btn.disabled = false; btn.textContent = 'Scan Again';
-    const cam1idx = cfg.cam1_index !== undefined ? cfg.cam1_index : d.cam1;
+    _scanCam1 = d.cam1 !== undefined ? d.cam1 : -1;
+    // If cam1 is in auto-detect mode (index=-1), use the server-reported active device
+    const cam1idx = (cfg.cam1_index !== undefined && cfg.cam1_index >= 0)
+                    ? cfg.cam1_index : _scanCam1;
     const cam2idx = cfg.cam2_index !== undefined ? cfg.cam2_index : d.cam2;
     const cams = d.cameras || [];
 
@@ -738,9 +749,11 @@ function doScanCameras() {
   });
 }
 function addCamFromModal(idx) {
-  const cam1 = cfg.cam1_index !== undefined ? cfg.cam1_index : -1;
+  // cam1 is "occupied" if explicitly pinned OR auto-detected by the server
+  const cam1pinned = cfg.cam1_index !== undefined && cfg.cam1_index >= 0;
+  const cam1occupied = cam1pinned || _scanCam1 >= 0;
   const cam2 = cfg.cam2_index !== undefined ? cfg.cam2_index : -1;
-  if (cam1 < 0) {
+  if (!cam1occupied) {
     cfg.cam1_index = idx; S('cam1_index', idx);
   } else if (cam2 < 0) {
     cfg.cam2_index = idx; S('cam2_index', idx);
